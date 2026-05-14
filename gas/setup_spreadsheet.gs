@@ -3,6 +3,8 @@
  * - 既存シート削除なし
  * - 2行目以降のデータ削除なし
  * - 1行目ヘッダーのみ設定・補正
+ *
+ * NOTE: このヘッダー定義は config/sheet_schema.yml と同期して保守すること。
  */
 function setupJicaOdaWatch() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -15,8 +17,15 @@ function setupJicaOdaWatch() {
     'JICA_ODA_CONFIG',
   ];
 
-  const MANUAL_FIELDS = [
-    'project_id',
+  const WATCH_AUTO_FIELDS = [
+    'project_id', 'country', 'project_name', 'sector', 'scheme', 'ga_date', 'pq_required',
+    'notice_date', 'notice_media', 'notice_url', 'result_url', 'oda_url', 'status_auto',
+    'status_detail', 'source_type', 'source_url', 'raw_text', 'evidence_text', 'parser_name',
+    'parser_version', 'parse_confidence', 'fetched_at', 'last_checked', 'change_flag',
+    'ai_summary', 'ai_change_summary', 'ai_next_action', 'ai_risk_note', 'ai_confidence',
+  ];
+
+  const WATCH_MANUAL_FIELDS = [
     'manual_status',
     'memo',
     'next_manual_action',
@@ -24,6 +33,13 @@ function setupJicaOdaWatch() {
     'manual_checked_date',
     'manual_updated_at',
     'manual_updated_by',
+  ];
+
+  const MANUAL_SHEET_FIELDS = ['project_id'].concat(WATCH_MANUAL_FIELDS);
+
+  const HISTORY_FIELDS = [
+    'changed_at', 'project_id', 'field_name', 'old_value', 'new_value', 'source_url',
+    'change_summary', 'run_id',
   ];
 
   const RAW_FIELDS = [
@@ -43,22 +59,13 @@ function setupJicaOdaWatch() {
 
   const CONFIG_FIELDS = ['key', 'value', 'description', 'updated_at'];
 
-  const WATCH_AUTO_FIELDS = [
-    'project_id', 'country', 'project_name', 'sector', 'scheme', 'ga_date', 'pq_required',
-    'notice_date', 'notice_media', 'notice_url', 'result_url', 'oda_url', 'status_auto',
-    'status_detail', 'source_type', 'source_url', 'raw_text', 'evidence_text', 'parser_name',
-    'parser_version', 'parse_confidence', 'fetched_at', 'last_checked', 'change_flag',
-    'ai_summary', 'ai_change_summary', 'ai_next_action', 'ai_risk_note', 'ai_confidence',
-  ];
-
-  const HISTORY_FIELDS = [
-    'changed_at', 'project_id', 'field_name', 'old_value', 'new_value', 'source_url',
-    'change_summary', 'run_id',
-  ];
-
   const DEFINITIONS = {
-    JICA_ODA_WATCH: { headers: WATCH_AUTO_FIELDS.concat(MANUAL_FIELDS), kind: 'watch' },
-    JICA_ODA_MANUAL: { headers: MANUAL_FIELDS, kind: 'manual' },
+    JICA_ODA_WATCH: {
+      headers: WATCH_AUTO_FIELDS.concat(WATCH_MANUAL_FIELDS),
+      kind: 'watch',
+      manualCount: WATCH_MANUAL_FIELDS.length,
+    },
+    JICA_ODA_MANUAL: { headers: MANUAL_SHEET_FIELDS, kind: 'manual' },
     JICA_ODA_HISTORY: { headers: HISTORY_FIELDS, kind: 'history' },
     JICA_ODA_RAW: { headers: RAW_FIELDS, kind: 'raw' },
     JICA_ODA_CONFIG: { headers: CONFIG_FIELDS, kind: 'config' },
@@ -85,7 +92,7 @@ function setupJicaOdaWatch() {
     const sheet = ensureSheet_(spreadsheet, sheetName);
 
     ensureHeaderRow_(sheet, headers);
-    applyFormat_(sheet, headers, definition.kind, HEADER_COLORS);
+    applyFormat_(sheet, headers, definition, HEADER_COLORS);
     applyNotes_(sheet, headers);
     applyValidation_(sheet, headers, VALIDATIONS);
   });
@@ -101,7 +108,8 @@ function ensureHeaderRow_(sheet, headers) {
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
 }
 
-function applyFormat_(sheet, headers, kind, colors) {
+function applyFormat_(sheet, headers, definition, colors) {
+  const kind = definition.kind;
   const colCount = Math.max(headers.length, 1);
 
   sheet.setFrozenRows(1);
@@ -117,9 +125,9 @@ function applyFormat_(sheet, headers, kind, colors) {
   allRange.setWrap(true);
 
   if (kind === 'watch') {
-    const manualCount = 7;
+    const manualCount = definition.manualCount;
     const autoCount = colCount - manualCount;
-    if (autoCount > 0) {
+    if (autoCount > 0 && manualCount > 0) {
       sheet.getRange(1, 1, 1, autoCount).setBackground(colors.watch_auto);
       sheet.getRange(1, autoCount + 1, 1, manualCount).setBackground(colors.watch_manual);
     }
