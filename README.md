@@ -22,9 +22,12 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## 必須環境変数
+## 環境変数
+現時点のローカルMVP実行では必須の環境変数はありません。
+
+将来、GitHub ActionsからGoogle Sheetsへ自動更新する段階では、以下を利用予定です。
 - `GOOGLE_SERVICE_ACCOUNT_JSON`
-- `SPREADSHEET_ID`（GitHub Actions secretで設定）
+- `SPREADSHEET_ID`
 
 任意:
 - `OPENAI_API_KEY`
@@ -140,15 +143,30 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 - manual fieldsは編集不能にしない
 - 権限制約で保護設定に失敗しても警告ログで継続
 
-## Google Sheets初回セットアップ
-```bash
-export SPREADSHEET_ID="..."
-export GOOGLE_SERVICE_ACCOUNT_JSON='...'
-python scripts/setup_spreadsheet.py --spreadsheet-id "$SPREADSHEET_ID" --dry-run
-python scripts/setup_spreadsheet.py --spreadsheet-id "$SPREADSHEET_ID"
-```
+## Google Sheets初回セットアップ（Apps Script方式）
+初回セットアップは、PythonではなくGoogle Apps Scriptで行う。
 
-このスクリプトは初回セットアップ/書式再適用用であり、日次更新用ではない。
+### 手順
+1. 対象のGoogleスプレッドシートを開く
+2. メニューから「拡張機能」→「Apps Script」を開く
+3. `gas/setup_spreadsheet.gs` の内容を `Code.gs` に貼り付ける
+4. 保存する
+5. 関数一覧から `setupJicaOdaWatch` を選択する
+6. 実行する
+7. 初回実行時の権限確認を許可する
+8. 以下の5シートが作成されることを確認する
+   - `JICA_ODA_WATCH`
+   - `JICA_ODA_MANUAL`
+   - `JICA_ODA_HISTORY`
+   - `JICA_ODA_RAW`
+   - `JICA_ODA_CONFIG`
+
+### 注意
+- 既存シートは削除しない
+- 2行目以降の既存データは削除しない
+- 1行目ヘッダーはschemaに合わせて補正される
+- manual fieldsは自動処理で上書きしない
+- このApps Scriptは初回セットアップおよび書式再適用用であり、日次更新用ではない
 
 ## Google Sheets運用上の注意
 - 既存シートは削除しない。
