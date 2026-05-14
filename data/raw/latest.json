@@ -1,0 +1,36 @@
+[
+  {
+    "project_id": "PALAU_WATER_KOROR_AIRAI_2025",
+    "country": "パラオ",
+    "project_name": "コロール州及びアイライ州における上水道改善計画",
+    "sector": "水・衛生",
+    "scheme": "無償資金協力",
+    "status_auto": "要確認",
+    "status_detail": "jica_oda_portal: 対応parser未実装のため要確認 | jica_grant_notice: HTTP取得失敗のため要確認 | jica_grant_situation: 対応parser未実装のため要確認 | jica_grant_index: 対応parser未実装のため要確認",
+    "source_type": "stub",
+    "source_url": "https://www.jica.go.jp/oda/",
+    "oda_url": "https://www.jica.go.jp/oda/",
+    "raw_text": "コロール州|アイライ州|上水道改善|Palau|Koror|Airai|Water Supply",
+    "parser_name": "stub_orchestrator",
+    "parser_version": "0.1",
+    "fetched_at": "2026-05-14T08:04:01.629392+00:00",
+    "last_checked": "2026-05-14T08:04:01.629392+00:00"
+  },
+  {
+    "project_id": "MADAGASCAR_WATER_TOAMASINA_2024",
+    "country": "マダガスカル",
+    "project_name": "トアマシナ市上水道システム拡張及び改善計画",
+    "sector": "水・衛生",
+    "scheme": "無償資金協力",
+    "status_auto": "要確認",
+    "status_detail": "jica_oda_portal: 対応parser未実装のため要確認 | jica_grant_notice: HTTP取得失敗のため要確認 | jica_grant_situation: 対応parser未実装のため要確認 | jica_grant_index: 対応parser未実装のため要確認",
+    "source_type": "stub",
+    "source_url": "https://www.jica.go.jp/oda/",
+    "oda_url": "https://www.jica.go.jp/oda/",
+    "raw_text": "トアマシナ|上水道|Toamasina|Water Supply",
+    "parser_name": "stub_orchestrator",
+    "parser_version": "0.1",
+    "fetched_at": "2026-05-14T08:04:01.629392+00:00",
+    "last_checked": "2026-05-14T08:04:01.629392+00:00"
+  }
+]
