@@ -69,3 +69,34 @@ sheets:
       - source_url
       - change_summary
       - run_id
+
+  JICA_ODA_MANUAL:
+    fields:
+      - project_id
+      - manual_status
+      - memo
+      - next_manual_action
+      - owner
+      - manual_checked_date
+      - manual_updated_at
+      - manual_updated_by
+  JICA_ODA_RAW:
+    fields:
+      - run_id
+      - fetched_at
+      - project_id
+      - source_type
+      - source_url
+      - parser_name
+      - parser_version
+      - http_status
+      - raw_text
+      - raw_html_excerpt
+      - evidence_text
+      - error_message
+  JICA_ODA_CONFIG:
+    fields:
+      - key
+      - value
+      - description
+      - updated_at
