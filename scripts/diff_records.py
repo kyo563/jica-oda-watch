@@ -5,6 +5,8 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
+import yaml
+
 MANUAL_FIELDS = [
     "manual_status",
     "memo",
@@ -15,12 +17,7 @@ MANUAL_FIELDS = [
     "manual_updated_by",
 ]
 
-FACT_FIELDS = [
-    "country", "project_name", "sector", "scheme", "ga_date", "pq_required",
-    "notice_date", "notice_media", "notice_url", "result_url", "oda_url",
-    "status_auto", "status_detail", "source_type", "source_url", "raw_text",
-    "evidence_text", "parser_name", "parser_version", "parse_confidence",
-]
+RECORD_FIELD_NAME = "__record__"
 
 
 def load_records(path, *, required=False):
@@ -33,9 +30,39 @@ def load_records(path, *, required=False):
         return []
 
 
-def merge_and_diff(previous, current):
-    prev_map = {r["project_id"]: r for r in previous}
-    cur_map = {r["project_id"]: r for r in current}
+def load_diff_fields(schema_path="config/sheet_schema.yml"):
+    with open(schema_path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    sheets = data.get("sheets", {})
+    watch = sheets.get("JICA_ODA_WATCH", {})
+    diff_fields = watch.get("diff_fields")
+    if not isinstance(diff_fields, list) or not diff_fields:
+        raise ValueError("sheet_schema.yml: sheets.JICA_ODA_WATCH.diff_fields が不正です")
+    return diff_fields
+
+
+def validate_project_ids(records, label):
+    seen = set()
+    duplicates = set()
+    for i, row in enumerate(records):
+        pid = row.get("project_id")
+        if not isinstance(pid, str) or not pid.strip():
+            raise ValueError(f"{label}: project_id欠落があります (index={i})")
+        pid = pid.strip()
+        if pid in seen:
+            duplicates.add(pid)
+        seen.add(pid)
+    if duplicates:
+        dup_list = ", ".join(sorted(duplicates))
+        raise ValueError(f"{label}: project_id重複があります: {dup_list}")
+
+
+def merge_and_diff(previous, current, diff_fields):
+    validate_project_ids(previous, "previous")
+    validate_project_ids(current, "current")
+
+    prev_map = {r["project_id"].strip(): r for r in previous}
+    cur_map = {r["project_id"].strip(): r for r in current}
     all_ids = sorted(set(prev_map) | set(cur_map))
     merged, history = [], []
     changed_at = datetime.now(timezone.utc).isoformat()
@@ -48,17 +75,46 @@ def merge_and_diff(previous, current):
             for field in MANUAL_FIELDS:
                 if field in p:
                     record[field] = p[field]
-            changed = [f for f in FACT_FIELDS if p.get(f) != c.get(f)]
+            changed = [f for f in diff_fields if p.get(f) != c.get(f)]
             record["change_flag"] = "updated" if changed else "no_change"
             for field in changed:
-                history.append({"changed_at": changed_at, "project_id": pid, "field_name": field, "old_value": p.get(field), "new_value": c.get(field), "source_url": c.get("source_url", ""), "change_summary": "自動差分検知", "run_id": "local"})
+                history.append({
+                    "changed_at": changed_at,
+                    "project_id": pid,
+                    "field_name": field,
+                    "old_value": p.get(field),
+                    "new_value": c.get(field),
+                    "source_url": c.get("source_url", ""),
+                    "change_summary": "自動差分検知",
+                    "run_id": "local",
+                })
         elif c and not p:
             record = deepcopy(c)
             record["change_flag"] = "new"
+            history.append({
+                "changed_at": changed_at,
+                "project_id": pid,
+                "field_name": RECORD_FIELD_NAME,
+                "old_value": "",
+                "new_value": "new",
+                "source_url": c.get("source_url", ""),
+                "change_summary": "新規案件を検出",
+                "run_id": "local",
+            })
         else:
             record = deepcopy(p)
             record["change_flag"] = "missing"
             record["status_detail"] = "掲載消滅／要確認"
+            history.append({
+                "changed_at": changed_at,
+                "project_id": pid,
+                "field_name": RECORD_FIELD_NAME,
+                "old_value": "exists",
+                "new_value": "missing",
+                "source_url": p.get("source_url", ""),
+                "change_summary": "前回存在した案件が今回取得結果に存在しません",
+                "run_id": "local",
+            })
         merged.append(record)
     return merged, history
 
@@ -75,7 +131,8 @@ def main():
         current = load_records(args.current, required=True)
     except FileNotFoundError as e:
         raise SystemExit(f"エラー: {e}")
-    merged, history = merge_and_diff(previous, current)
+    diff_fields = load_diff_fields()
+    merged, history = merge_and_diff(previous, current, diff_fields)
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump({"projects": merged, "history": history}, f, ensure_ascii=False, indent=2)

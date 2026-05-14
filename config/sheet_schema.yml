@@ -30,6 +30,27 @@ sheets:
       - ai_next_action
       - ai_risk_note
       - ai_confidence
+    diff_fields:
+      - country
+      - project_name
+      - sector
+      - scheme
+      - ga_date
+      - pq_required
+      - notice_date
+      - notice_media
+      - notice_url
+      - result_url
+      - oda_url
+      - status_auto
+      - status_detail
+      - source_type
+      - source_url
+      - raw_text
+      - evidence_text
+      - parser_name
+      - parser_version
+      - parse_confidence
     manual_fields:
       - manual_status
       - memo

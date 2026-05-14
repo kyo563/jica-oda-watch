@@ -51,11 +51,25 @@ def validate_sheet_schema(path):
         data = yaml.safe_load(f) or {}
     sheets = data.get("sheets", {})
     watch = sheets.get("JICA_ODA_WATCH", {})
+
+    auto_fields = set(watch.get("auto_fields", []))
     manual_fields = set(watch.get("manual_fields", []))
+    diff_fields = watch.get("diff_fields")
+
     if manual_fields != MANUAL_FIELDS:
-        raise ValueError(
-            "sheet_schema.yml: manual_fields が期待値と不一致です"
-        )
+        raise ValueError("sheet_schema.yml: manual_fields が期待値と不一致です")
+
+    if not isinstance(diff_fields, list) or not diff_fields:
+        raise ValueError("sheet_schema.yml: diff_fields が必要です")
+
+    diff_fields_set = set(diff_fields)
+    if not diff_fields_set.issubset(auto_fields):
+        invalid = sorted(diff_fields_set - auto_fields)
+        raise ValueError(f"sheet_schema.yml: diff_fields は auto_fields の部分集合である必要があります: {invalid}")
+
+    overlap = sorted(manual_fields & diff_fields_set)
+    if overlap:
+        raise ValueError(f"sheet_schema.yml: manual_fields と diff_fields が重複しています: {overlap}")
 
 
 def main():
