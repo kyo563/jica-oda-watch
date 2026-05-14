@@ -158,3 +158,14 @@ python scripts/setup_spreadsheet.py --spreadsheet-id "$SPREADSHEET_ID"
 - WATCH=最新状態、HISTORY=履歴、RAW=証跡を分離運用する。
 - 掲載が消えた案件は削除せず `missing` / `掲載消滅／要確認` として扱う。
 - AI要約は補助情報であり、公式情報の代替ではない。
+
+
+### Apps Scriptで初回セットアップする方法
+
+1. Googleスプレッドシートを開く
+2. 拡張機能 → Apps Script
+3. `gas/setup_spreadsheet.gs` の内容を `Code.gs` に貼り付ける
+4. 保存
+5. `setupJicaOdaWatch` を実行
+6. 権限を許可
+7. 5シートが作成されることを確認
