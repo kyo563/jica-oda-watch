@@ -225,3 +225,7 @@ All workflows should log:
 README, UI labels, sheet headers visible to humans, and AI summaries should be Japanese unless there is a strong reason to keep a field technical.
 
 Internal variable names may be English.
+
+## Spreadsheet (planned source of truth)
+
+- https://docs.google.com/spreadsheets/d/1WQiDT4LdqkJ6z361uxVaZOipEBhfofv0PTpnGEO26yk/edit?gid=0#gid=0

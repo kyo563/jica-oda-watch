@@ -3,6 +3,7 @@ import argparse
 import csv
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 
 def load_watchlist(path):
@@ -44,6 +45,7 @@ def main():
     if args.dry_run:
         print(f"dry-run: {len(records)} records fetched")
         return
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(records, f, ensure_ascii=False, indent=2)
 

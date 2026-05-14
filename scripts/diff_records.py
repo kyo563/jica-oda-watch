@@ -3,6 +3,7 @@ import argparse
 import json
 from copy import deepcopy
 from datetime import datetime, timezone
+from pathlib import Path
 
 MANUAL_FIELDS = [
     "manual_status",
@@ -69,6 +70,7 @@ def main():
     previous = load_records(args.previous)
     current = load_records(args.current)
     merged, history = merge_and_diff(previous, current)
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump({"projects": merged, "history": history}, f, ensure_ascii=False, indent=2)
 

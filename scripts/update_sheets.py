@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+from pathlib import Path
 
 
 def plan_updates(payload):
@@ -19,6 +20,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
+    Path(args.input).parent.mkdir(parents=True, exist_ok=True)
     with open(args.input, "r", encoding="utf-8") as f:
         payload = json.load(f)
     plan = plan_updates(payload)

@@ -18,6 +18,10 @@ sheets:
       - source_type
       - source_url
       - raw_text
+      - evidence_text
+      - parser_name
+      - parser_version
+      - parse_confidence
       - fetched_at
       - last_checked
       - change_flag

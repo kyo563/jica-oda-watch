@@ -36,9 +36,19 @@ pip install -r requirements.txt
 ```bash
 python scripts/validate_config.py
 python scripts/crawl_jica.py --watchlist config/watchlist.example.csv --output data/raw/latest.json --dry-run
-python scripts/diff_records.py --previous data/snapshots/previous.json --current data/raw/latest.json --output data/pages/projects.json
-python scripts/update_sheets.py --input data/pages/projects.json --dry-run
+python scripts/diff_records.py --previous data/snapshots/previous.json --current data/raw/latest.json --output site/data/projects.json
+python scripts/update_sheets.py --input site/data/projects.json --dry-run
 ```
+
+## snapshot（暫定MVP設計）
+- `data/snapshots/previous.json` が存在しない場合、差分処理は「前回データなし」として扱い、全件 `new` になります。
+- この `previous.json` は**暫定MVP用**です。正本はGoogle Sheetsです。
+- TODO: 将来は `previous.json` ではなく、Google Sheets の WATCH / MANUAL / HISTORY から既存データを読み込む構成に移行します。
+
+## GitHub Actions / Pages反映（現状）
+- 現在は **dry-run / Pages JSON生成確認段階** です。
+- MVPでは `site/data/projects.json` を生成し、必要に応じてコミットしてPagesへ反映する方針です。
+- 自動コミットは次フェーズで安全性確認後に実装します。
 
 ## 制約
 - 公示消滅は契約確定とみなさない（`missing` + 要確認）
