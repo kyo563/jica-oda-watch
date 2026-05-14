@@ -63,3 +63,98 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 - Google Sheets API実装
 - Apps Script連携
 - Pages詳細画面とメモ投稿
+
+## Google Sheets仕様
+
+### 基本方針
+- Google Sheetsを正本とする。
+- GitHub Pagesは閲覧・入力補助UIであり、正本ではない。
+- `project_id` を主キーとし、行番号に依存しない。
+- manual fieldsは自動処理で上書きしない。
+- `missing` は「掲載消滅／要確認」であり、案件終了確定ではない。
+- AI要約は補助情報であり、事実判定の根拠に使わない。
+
+### シート構成
+| シート名 | 役割 | 更新主体 | 備考 |
+|---|---|---|---|
+| JICA_ODA_WATCH | 案件ごとの最新状態を保持するメインシート | crawler / 手入力 | auto fields + manual fields |
+| JICA_ODA_MANUAL | 手入力情報を分離管理する補助シート | 人間 / Apps Script | 将来の双方向入力用 |
+| JICA_ODA_HISTORY | 差分履歴をappend-onlyで保存 | crawler | 削除・上書きしない |
+| JICA_ODA_RAW | 取得原文・証跡・parser結果を保存 | crawler | AI要約だけに依存しない証跡 |
+| JICA_ODA_CONFIG | 運用設定・補助設定を保存 | 人間 / 管理者 | 将来拡張用 |
+
+### JICA_ODA_WATCH
+- メインシート。`auto fields`（自動更新列）と`manual fields`（手入力列）で構成。
+- manual fieldsは自動更新で上書きしない。
+
+### JICA_ODA_MANUAL
+- 手入力専用情報を分離管理する補助シート。
+- 将来のPages/Apps Script入力連携を想定。
+
+### JICA_ODA_HISTORY
+- 変更履歴をappend-onlyで管理。
+- 既存履歴の削除・上書きはしない。
+
+### JICA_ODA_RAW
+- 取得時の原文・抜粋・parser情報・エラーを保持する証跡シート。
+- AI要約だけを保存してRAWを捨てる運用は禁止。
+
+### JICA_ODA_CONFIG
+- 運用設定の受け皿シート（初期は器のみ）。
+
+### 自動更新列と手入力列
+- auto fields: crawler / parser / diff / AI補助処理が更新。
+- manual fields: 人間の判断を保持する列。自動処理で上書き禁止。
+
+### 差分検知対象
+`config/sheet_schema.yml` の `diff_fields` を差分検知対象とする。
+除外方針:
+- `fetched_at`
+- `last_checked`
+- `change_flag`
+- `ai_*` 系
+- manual fields
+
+現在の `diff_fields`:
+`country, project_name, sector, scheme, ga_date, pq_required, notice_date, notice_media, notice_url, result_url, oda_url, status_auto, status_detail, source_type, source_url, raw_text, evidence_text, parser_name, parser_version, parse_confidence`
+
+### 入力規則
+初回セットアップで可能な範囲で以下を設定:
+| 対象列 | 許可値 |
+|---|---|
+| change_flag | new / updated / missing / no_change / ai_low_confidence / error / manual_updated |
+| manual_status | 空欄 / 未確認 / 確認中 / 対応不要 / 要対応 / 対応済み / 保留 |
+| pq_required | 空欄 / 要確認 / あり / なし / 不明 |
+
+### 書式・保護方針
+- 1行目固定
+- ヘッダー太字
+- フィルター設定
+- 列幅調整
+- 折り返し表示
+- auto/manual色分け
+- manual fieldsに説明note
+
+保護方針:
+- auto fieldsは保護候補
+- manual fieldsは編集不能にしない
+- 権限制約で保護設定に失敗しても警告ログで継続
+
+## Google Sheets初回セットアップ
+```bash
+export SPREADSHEET_ID="..."
+export GOOGLE_SERVICE_ACCOUNT_JSON='...'
+python scripts/setup_spreadsheet.py --spreadsheet-id "$SPREADSHEET_ID" --dry-run
+python scripts/setup_spreadsheet.py --spreadsheet-id "$SPREADSHEET_ID"
+```
+
+このスクリプトは初回セットアップ/書式再適用用であり、日次更新用ではない。
+
+## Google Sheets運用上の注意
+- 既存シートは削除しない。
+- 2行目以降の既存データは削除しない。
+- 1行目ヘッダーはschemaに合わせて補正される場合がある。
+- manual fieldsは自動更新で上書きしない。
+- WATCH=最新状態、HISTORY=履歴、RAW=証跡を分離運用する。
+- 掲載が消えた案件は削除せず `missing` / `掲載消滅／要確認` として扱う。
+- AI要約は補助情報であり、公式情報の代替ではない。
