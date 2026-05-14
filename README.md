@@ -23,8 +23,8 @@ pip install -r requirements.txt
 ```
 
 ## 必須環境変数
-- `GOOGLE_SERVICE_ACCOUNT_JSON`
-- `SPREADSHEET_ID`（GitHub Actions secretで設定）
+- 現時点の初回セットアップ（Apps Script方式）では必須環境変数はありません。
+- `GOOGLE_SERVICE_ACCOUNT_JSON` と `SPREADSHEET_ID` は、将来GitHub ActionsからGoogle Sheetsへ自動更新する段階で利用予定です。
 
 任意:
 - `OPENAI_API_KEY`
@@ -139,16 +139,6 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 - auto fieldsは保護候補
 - manual fieldsは編集不能にしない
 - 権限制約で保護設定に失敗しても警告ログで継続
-
-## Google Sheets初回セットアップ
-```bash
-export SPREADSHEET_ID="..."
-export GOOGLE_SERVICE_ACCOUNT_JSON='...'
-python scripts/setup_spreadsheet.py --spreadsheet-id "$SPREADSHEET_ID" --dry-run
-python scripts/setup_spreadsheet.py --spreadsheet-id "$SPREADSHEET_ID"
-```
-
-このスクリプトは初回セットアップ/書式再適用用であり、日次更新用ではない。
 
 ## Google Sheets運用上の注意
 - 既存シートは削除しない。
