@@ -54,7 +54,7 @@ def validate_sheet_schema(path):
     manual_fields = set(watch.get("manual_fields", []))
     if manual_fields != MANUAL_FIELDS:
         raise ValueError(
-            "sheet_schema.yml: manual_fields がAGENTS.md定義と不一致です"
+            "sheet_schema.yml: manual_fields が期待値と不一致です"
         )
 
 

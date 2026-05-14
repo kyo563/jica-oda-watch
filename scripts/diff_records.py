@@ -19,14 +19,17 @@ FACT_FIELDS = [
     "country", "project_name", "sector", "scheme", "ga_date", "pq_required",
     "notice_date", "notice_media", "notice_url", "result_url", "oda_url",
     "status_auto", "status_detail", "source_type", "source_url", "raw_text",
+    "evidence_text", "parser_name", "parser_version", "parse_confidence",
 ]
 
 
-def load_records(path):
+def load_records(path, *, required=False):
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
+        if required:
+            raise FileNotFoundError(f"currentファイルが見つかりません: {path}")
         return []
 
 
@@ -68,7 +71,10 @@ def main():
     args = parser.parse_args()
 
     previous = load_records(args.previous)
-    current = load_records(args.current)
+    try:
+        current = load_records(args.current, required=True)
+    except FileNotFoundError as e:
+        raise SystemExit(f"エラー: {e}")
     merged, history = merge_and_diff(previous, current)
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:

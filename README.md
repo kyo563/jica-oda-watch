@@ -24,7 +24,7 @@ pip install -r requirements.txt
 
 ## 必須環境変数
 - `GOOGLE_SERVICE_ACCOUNT_JSON`
-- `SPREADSHEET_ID`
+- `SPREADSHEET_ID`（GitHub Actions secretで設定）
 
 任意:
 - `OPENAI_API_KEY`
@@ -32,10 +32,13 @@ pip install -r requirements.txt
 - `APPS_SCRIPT_ENDPOINT`
 - `APPS_SCRIPT_SHARED_SECRET`
 
-## ローカル dry-run
+## ローカル実行手順（MVP）
+`--dry-run` は「外部更新（例: Google Sheets書き込み）を止める」ために使います。
+このMVPでは `crawl_jica.py --dry-run` は出力ファイルを作らないため、差分処理の前段では使いません。
+
 ```bash
 python scripts/validate_config.py
-python scripts/crawl_jica.py --watchlist config/watchlist.example.csv --output data/raw/latest.json --dry-run
+python scripts/crawl_jica.py --watchlist config/watchlist.example.csv --output data/raw/latest.json
 python scripts/diff_records.py --previous data/snapshots/previous.json --current data/raw/latest.json --output site/data/projects.json
 python scripts/update_sheets.py --input site/data/projects.json --dry-run
 ```

@@ -228,4 +228,5 @@ Internal variable names may be English.
 
 ## Spreadsheet (planned source of truth)
 
-- https://docs.google.com/spreadsheets/d/1WQiDT4LdqkJ6z361uxVaZOipEBhfofv0PTpnGEO26yk/edit?gid=0#gid=0
+- 実IDは公開リポジトリに直書きしない
+- `SPREADSHEET_ID` は GitHub Actions Secrets で管理する
