@@ -1,0 +1,16 @@
+sources:
+  - source_type: jica_oda_portal
+    url: https://www.jica.go.jp/oda/
+    enabled: true
+  - source_type: jica_grant_notice
+    url: https://www.jica.go.jp/activities/schemes/grant_aid/chotatsu/index.html
+    enabled: true
+  - source_type: jica_grant_situation
+    url: https://www.jica.go.jp/activities/schemes/grant_aid/situation.html
+    enabled: true
+  - source_type: jica_grant_index
+    url: https://www.jica.go.jp/activities/schemes/grant_aid/index.html
+    enabled: true
+  - source_type: mofa_oda_search
+    url: https://www3.mofa.go.jp/mofaj/gaiko/oda/search.php
+    enabled: false
