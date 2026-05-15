@@ -72,11 +72,29 @@ def validate_sheet_schema(path):
         raise ValueError(f"sheet_schema.yml: manual_fields と diff_fields が重複しています: {overlap}")
 
 
+
+
+def validate_crawl_scope(path):
+    with open(path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    scope = data.get("scope", {})
+    if not isinstance(scope, dict):
+        raise ValueError("crawl_scope.yml: scopeが必要です")
+    for key in ["schemes", "sources"]:
+        if not isinstance(scope.get(key), list) or not scope.get(key):
+            raise ValueError(f"crawl_scope.yml: scope.{key} は空でない配列が必要です")
+    for key in ["max_pages_per_source", "max_detail_pages", "request_interval_seconds"]:
+        val = scope.get(key)
+        if not isinstance(val, int) or val < 1:
+            raise ValueError(f"crawl_scope.yml: scope.{key} は1以上の整数が必要です")
+
+
 def main():
     try:
         validate_watchlist("config/watchlist.example.csv")
         validate_sources("config/sources.yml")
         validate_sheet_schema("config/sheet_schema.yml")
+        validate_crawl_scope("config/crawl_scope.yml")
     except Exception as e:
         print(f"NG: {e}")
         sys.exit(1)
