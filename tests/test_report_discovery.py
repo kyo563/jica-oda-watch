@@ -1,7 +1,7 @@
 from scripts.report_discovery import build_report
 
 
-def test_build_report_contains_quality_warnings():
+def test_build_report_contains_quality_warnings_and_high_risk_note():
     obj = {
         "records": [
             {
@@ -31,19 +31,34 @@ def test_build_report_contains_quality_warnings():
         "meta": {},
     }
     report = build_report(obj)
-    assert "records件数: 2" in report
+    assert "review_status: BLOCK" in report
     assert "project_id重複件数: 1" in report
-    assert "notice_url欠落件数: 1" in report
-    assert "evidence_text欠落件数: 1" in report
-    assert "notice_date欠落件数: 1" in report
-    assert "raw_text欠落/短文件数(<40): 1" in report
-    assert "parse_confidence全件low: はい" in report
-    assert "parse_confidence low率: 100%" in report
-    assert "## pq_required別件数" in report
-    assert "- 要確認: 1" in report
-    assert "## 重複project_id詳細" in report
+    assert "project_id_missing件数: 0" in report
+    assert "high-risk records総数:" in report
     assert "## high-risk records" in report
-    assert "detail_fetch_failed: 1" in report
+    assert "※表示は先頭20件まで" in report
+
+
+def test_build_report_blocks_when_project_id_missing_exists():
+    obj = {
+        "records": [{"project_id": "", "parse_confidence": "medium", "project_name": "案件", "notice_url": "u", "notice_date": "d", "evidence_text": "e", "raw_text": "x" * 50}],
+        "errors": [],
+        "meta": {},
+    }
+    report = build_report(obj)
+    assert "project_id_missing件数: 1" in report
+    assert "review_status: BLOCK" in report
+
+
+def test_build_report_blocks_when_errors_are_greater_or_equal_to_records():
+    obj = {
+        "records": [{"project_id": "pid-1", "parse_confidence": "medium", "project_name": "案件", "notice_url": "u", "notice_date": "d", "evidence_text": "e", "raw_text": "x" * 50}],
+        "errors": [{"reason": "fetch_failed"}],
+        "meta": {},
+    }
+    report = build_report(obj)
+    assert "errors件数: 1" in report
+    assert "review_status: BLOCK" in report
 
 
 def test_build_report_empty_records_with_errors():

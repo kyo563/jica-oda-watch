@@ -20,6 +20,7 @@ def _missing_counts(records: list[dict]) -> dict:
         "evidence_text_missing": sum(1 for r in records if not (r.get("evidence_text") or "").strip()),
         "raw_text_missing_or_short": sum(1 for r in records if len((r.get("raw_text") or "").strip()) < 40),
         "project_name_yokakunin": sum(1 for r in records if (r.get("project_name") or "").strip() == "要確認"),
+        "project_id_missing": sum(1 for r in records if not (r.get("project_id") or "").strip()),
     }
 
 
@@ -28,10 +29,28 @@ def _duplicate_project_ids(records: list[dict]) -> list[str]:
     return sorted([k for k, v in c.items() if v > 1])
 
 
-def _review_status(records: list[dict], dups: list[str], missing: dict, low_rate: float) -> str:
-    if dups or not records or low_rate == 1.0 or missing["evidence_text_missing"] >= max(1, int(len(records) * 0.8)):
+def _review_status(records: list[dict], errors: list[dict], dups: list[str], missing: dict, low_rate: float) -> str:
+    n = len(records)
+    error_count = len(errors)
+    notice_missing_rate = (missing["notice_url_missing"] / n) if n else 0.0
+    error_rate = (error_count / n) if n else (1.0 if error_count else 0.0)
+
+    if dups or not records or low_rate == 1.0 or missing["project_id_missing"] > 0:
         return "BLOCK"
-    if low_rate >= 0.5 or missing["notice_date_missing"] >= max(1, int(len(records) * 0.5)):
+    if missing["evidence_text_missing"] >= max(1, int(n * 0.8)):
+        return "BLOCK"
+    if error_count >= max(1, n):
+        return "BLOCK"
+    if notice_missing_rate >= 0.8:
+        return "BLOCK"
+
+    if low_rate >= 0.5 or missing["notice_date_missing"] >= max(1, int(n * 0.5)):
+        return "REVIEW"
+    if error_rate >= 0.3:
+        return "REVIEW"
+    if notice_missing_rate >= 0.5:
+        return "REVIEW"
+    if missing["evidence_text_missing"] >= max(1, int(n * 0.5)):
         return "REVIEW"
     return "PASS_CANDIDATE"
 
@@ -48,7 +67,8 @@ def build_report(obj: dict) -> str:
     all_low = bool(records) and all((r.get("parse_confidence") or "") == "low" for r in records)
     low_count = confidence.get("low", 0)
     low_rate = (low_count / len(records)) if records else 0.0
-    review_status = _review_status(records, dups, missing, low_rate)
+    review_status = _review_status(records, errors, dups, missing, low_rate)
+    error_rate = (len(errors) / len(records)) if records else (1.0 if errors else 0.0)
 
     lines = [
         "# discovery_report",
@@ -58,6 +78,8 @@ def build_report(obj: dict) -> str:
         f"- records件数: {len(records)}",
         f"- errors件数: {len(errors)}",
         f"- project_id重複件数: {len(dups)}",
+        f"- project_id_missing件数: {missing['project_id_missing']}",
+        f"- error率(records比): {error_rate:.0%}",
         f"- notice_url欠落件数: {missing['notice_url_missing']}",
         f"- evidence_text欠落件数: {missing['evidence_text_missing']}",
         f"- notice_date欠落件数: {missing['notice_date_missing']}",
@@ -65,6 +87,7 @@ def build_report(obj: dict) -> str:
         f"- project_name=要確認 件数: {missing['project_name_yokakunin']}",
         f"- parse_confidence全件low: {'はい' if all_low else 'いいえ'}",
         f"- parse_confidence low率: {low_rate:.0%}",
+        f"- high-risk records総数: 0",
         "",
         "## parse_confidence別件数",
     ]
@@ -88,6 +111,15 @@ def build_report(obj: dict) -> str:
         lines.append("- parse_confidenceが全件lowです。Sheets投入は見合わせてください。")
     if low_rate >= 0.5:
         lines.append("- parse_confidenceのlow率が高いです。手動レビューを強化してください。")
+    if missing["project_id_missing"] > 0:
+        lines.append("- project_id欠落があります。Sheets投入は停止してください。")
+    if len(errors) >= max(1, len(records)):
+        lines.append("- errorsがrecords以上です。再クロール/修正後に再判定してください。")
+    if error_rate >= 0.3:
+        lines.append("- errors率が高いです。再クロールまたはパーサ確認を推奨します。")
+    notice_missing_rate = (missing["notice_url_missing"] / len(records)) if records else 0.0
+    if notice_missing_rate >= 0.5:
+        lines.append("- notice_url欠落が多いです。detail抽出の確認が必要です。")
     if pq_dist.get("要確認", 0) >= max(1, int(len(records) * 0.5)):
         lines.append("- pq_required=要確認 が多いです。PQ判定は保留してください。")
     if missing["notice_date_missing"] >= max(1, int(len(records) * 0.5)):
@@ -116,8 +148,9 @@ def build_report(obj: dict) -> str:
             reasons.append("missing_notice_date")
         if reasons:
             high_risk_rows.append((r, ", ".join(reasons)))
+    lines = [x if x != "- high-risk records総数: 0" else f"- high-risk records総数: {len(high_risk_rows)}" for x in lines]
     if high_risk_rows:
-        lines.extend(["", "## high-risk records", "", "| project_id | project_name | reason | notice_url | parse_confidence |", "|---|---|---|---|---|"])
+        lines.extend(["", "## high-risk records", "- ※表示は先頭20件まで", "", "| project_id | project_name | reason | notice_url | parse_confidence |", "|---|---|---|---|---|"])
         for r, reason in high_risk_rows[:20]:
             lines.append(
                 "| {pid} | {name} | {reason} | {url} | {conf} |".format(

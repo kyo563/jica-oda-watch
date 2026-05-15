@@ -16,7 +16,8 @@
 - `raw_text`
   - detail本文テキストを正規化して短く保持（上限あり）
 - `evidence_text`
-  - 「公告」「公示」「入札」「事前資格審査」など周辺の短い抜粋
+  - detail本文にある「公告」「公示」「入札」「調達」「事前資格審査」「PQ」周辺の短い抜粋
+  - `無償資金協力` 単語だけは証跡扱いしない
 - `notice_url`
   - canonicalized `candidate_url`
 
@@ -29,7 +30,7 @@
 ## 低信頼（parse_confidence=low）条件
 - heading/title が取れない
 - または本文テキスト不足
-- または candidate metadata 依存が強い
+- または detail本文証跡がなく、candidate metadata（candidate_title等）依存
 
 ## 補足
 - discover mode は検証段階。
@@ -41,3 +42,6 @@
 - schedule は discover へ未切替。
 - discover 出力は `write_sheets=true` 経路へ未接続。
 - schedule の discover 切替はまだ行わない。
+
+- candidate metadata（candidate_title/evidence_text）は人間確認補助です。`parse_confidence` を上げる根拠には使いません。
+- errors が多い report は Sheets投入不可、または再クロール対象です。

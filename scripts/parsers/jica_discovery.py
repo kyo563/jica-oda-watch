@@ -117,7 +117,7 @@ def _extract_notice_date(text: str) -> str:
 def _extract_evidence(text: str) -> str:
     if not text:
         return ""
-    keys = ["公告", "公示", "入札", "調達", "事前資格審査", "PQ", "ＰＱ", "無償資金協力"]
+    keys = ["公告", "公示", "入札", "調達", "事前資格審査", "PQ", "ＰＱ"]
     for key in keys:
         idx = text.find(key)
         if idx >= 0:
@@ -131,11 +131,22 @@ def _detect_pq_required(text: str) -> str:
     if not text:
         return "要確認"
     term = r"(?:PQ|ＰＱ|事前資格審査)"
-    neg = r"(?:不要|なし|実施しない|実施しません|行わない|行いません|対象外|該当なし|該当しない)"
-    pos = r"(?:実施します|実施する|行います|行う|受付|提出|申請|参加資格)"
+    neg = r"(?:不要|なし|無し|ありません|有りません|実施しない|実施しません|実施なし|実施無し|行わない|行いません|対象外|該当なし|該当しない)"
     if re.search(rf"{term}.{{0,24}}{neg}|{neg}.{{0,24}}{term}", text):
         return "なし"
-    if re.search(rf"{term}.{{0,24}}{pos}|{pos}.{{0,24}}{term}", text):
+
+    pos_patterns = [
+        r"事前資格審査.{0,12}実施",
+        r"PQ.{0,12}実施",
+        r"ＰＱ.{0,12}実施",
+        r"事前資格審査.{0,16}申請.{0,8}受け付け",
+        r"PQ.{0,16}申請.{0,8}受け付け",
+        r"ＰＱ.{0,16}申請.{0,8}受け付け",
+        r"事前資格審査.{0,16}提出.{0,8}受け付け",
+        r"PQ.{0,16}提出.{0,8}受け付け",
+        r"ＰＱ.{0,16}提出.{0,8}受け付け",
+    ]
+    if any(re.search(p, text) for p in pos_patterns):
         return "あり"
     return "要確認"
 
@@ -159,12 +170,14 @@ def parse_detail(html: str, candidate: dict, fetched_at: str) -> dict:
     text = _normalize_text(" ".join(parser.text_parts))
     raw_text = _truncate(text, RAW_TEXT_LIMIT)
     notice_date = _extract_notice_date(text) or _normalize_text(candidate.get("notice_date_hint") or "")
-    evidence_text = _extract_evidence(text) or _normalize_text(candidate.get("evidence_text") or "")
+    detail_evidence = _extract_evidence(text)
+    candidate_evidence = _normalize_text(candidate.get("evidence_text") or "")
+    evidence_text = detail_evidence or candidate_evidence
     pq_required = _detect_pq_required(text)
 
     has_heading = bool(_normalize_text(heading))
     has_body = len(raw_text) >= 40
-    has_evidence = bool(evidence_text)
+    has_evidence = bool(detail_evidence)
     parse_confidence = "medium" if has_heading and notice_url and has_body and has_evidence else "low"
 
     project_id = generate_project_id("", title, "無償資金協力", notice_url)

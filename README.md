@@ -190,6 +190,8 @@ python scripts/report_discovery.py --input data/raw/discovered.json --output dat
 - `discovery_report.md` を人間が確認してから、Sheets投入の可否を判断します。
 - schedule は discover へ切替していません。
 - discover 出力は `write_sheets=true` 経路に接続していません。
+- candidate metadata（candidate_title/evidence_text）は人間確認補助のみ。`parse_confidence` を上げる根拠に使いません。
+- errors が多い `discovery_report.md` は Sheets投入不可、または再クロール対象です。
 
 ### project_id生成規則
 1. URLに安定IDが取れない場合、`country + project_name + scheme + canonical_url` から決定的に生成します。  
