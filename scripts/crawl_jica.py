@@ -2,6 +2,7 @@
 import argparse
 import csv
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -85,12 +86,13 @@ def validate_discovered_records(records):
     return valid, errors
 
 
-def discover_records(sources, scope):
+def discover_records(sources, scope, fetcher=fetch_text, sleeper=time.sleep):
     target_sources = set(scope.get("sources", ["jica_grant_notice"]))
     max_pages = int(scope.get("max_pages_per_source", 10))
     max_detail = int(scope.get("max_detail_pages", 20))
-    records, count = [], 0
+    records, errors, count = [], [], 0
     now = datetime.now(timezone.utc).isoformat()
+    request_interval = int(scope.get("request_interval_seconds", 1))
 
     for source in sources:
         if source["source_type"] not in target_sources:
@@ -100,19 +102,30 @@ def discover_records(sources, scope):
         if count >= max_pages:
             break
         try:
-            html = fetch_text(source["url"])
+            html = fetcher(source["url"])
         except HTTPFetchError:
+            errors.append({"level": "error", "reason": "list_fetch_failed", "source_url": source.get("url", "")})
             continue
+        sleeper(request_interval)
         candidates = extract_candidates(html, source["url"], source["source_type"])
         for c in candidates[:max_detail]:
             try:
-                detail_html = fetch_text(c["candidate_url"])
+                detail_html = fetcher(c["candidate_url"])
             except HTTPFetchError:
-                detail_html = ""
+                errors.append({
+                    "level": "error",
+                    "reason": "detail_fetch_failed",
+                    "candidate_url": c.get("candidate_url", ""),
+                    "candidate_title": c.get("candidate_title", ""),
+                    "source_url": c.get("source_url", source.get("url", "")),
+                })
+                continue
             records.append(parse_detail(detail_html, c, now))
+            sleeper(request_interval)
         count += 1
 
-    valid, errors = validate_discovered_records(records)
+    valid, validation_errors = validate_discovered_records(records)
+    errors.extend(validation_errors)
     if not valid:
         print("warning: discover mode generated no valid records")
     return {"records": valid, "errors": errors, "meta": {"parser_name": PARSER_NAME, "parser_version": PARSER_VERSION}}

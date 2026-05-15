@@ -172,6 +172,8 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 - `watchlist` mode はMVP・重点監視用として維持します（削除しません）。
 - `discover` mode はJICA公開ページから案件候補を自動発見します。
 - 初期対象は **無償資金協力**、sourceは **`jica_grant_notice` のみ** です。
+- `parse_detail()` は現時点で本格的なdetail HTML解析を未実装で、candidate metadataを使う最小実装です。
+- detail取得失敗時は `errors` に記録し、`records`（valid records）へは入れません。
 - scheduleをdiscoverへ切替しません（検証後に判断）。
 
 ### 実行例
@@ -189,6 +191,7 @@ python scripts/crawl_jica.py --mode discover --output data/raw/discovered.json
 ### アクセス頻度制限方針
 - `config/crawl_scope.yml` で対象source・ページ数上限・間隔を制限します。
 - 初期値は安全側（例: `max_pages_per_source=10`, `max_detail_pages=20`, `request_interval_seconds=1`）。
+- 安全上限: `max_pages_per_source<=30`, `max_detail_pages<=100`, `1<=request_interval_seconds<=60`。
 
 ### 禁止事項（再確認）
 - watchlist方式を削除しない

@@ -57,6 +57,9 @@ def extract_candidates(html: str, source_url: str, source_type: str) -> list[dic
 
 
 def parse_detail(html: str, candidate: dict, fetched_at: str) -> dict:
+    # NOTE: 現段階ではdetail HTMLの本格解析は未実装。
+    # candidate metadataを使った最小限レコード生成のみ行う。
+    _ = html
     title = (candidate.get("candidate_title") or "").strip()
     notice_url = canonicalize_url(candidate.get("candidate_url") or "")
     project_id = generate_project_id("", title, "無償資金協力", notice_url)
