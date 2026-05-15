@@ -183,7 +183,13 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 python scripts/crawl_jica.py --mode watchlist --watchlist config/watchlist.example.csv --output data/raw/latest.json
 python scripts/crawl_jica.py --watchlist config/watchlist.example.csv --output data/raw/latest.json
 python scripts/crawl_jica.py --mode discover --output data/raw/discovered.json
+python scripts/report_discovery.py --input data/raw/discovered.json --output data/raw/discovery_report.md
 ```
+
+- discover mode は検証段階（experimental）です。
+- `discovery_report.md` を人間が確認してから、Sheets投入の可否を判断します。
+- schedule は discover へ切替していません。
+- discover 出力は `write_sheets=true` 経路に接続していません。
 
 ### project_id生成規則
 1. URLに安定IDが取れない場合、`country + project_name + scheme + canonical_url` から決定的に生成します。  

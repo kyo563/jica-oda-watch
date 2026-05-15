@@ -34,5 +34,10 @@
 ## 補足
 - discover mode は検証段階。
 - Sheets投入前に `discovery_report.md` を人間確認する。
+- 実行例:
+  - `python scripts/crawl_jica.py --mode discover --output data/raw/discovered.json`
+  - `python scripts/report_discovery.py --input data/raw/discovered.json --output data/raw/discovery_report.md`
 - `parse_confidence` が low ばかりの場合、投入しない。
+- schedule は discover へ未切替。
+- discover 出力は `write_sheets=true` 経路へ未接続。
 - schedule の discover 切替はまだ行わない。
