@@ -1,14 +1,21 @@
+import json
+import subprocess
+import sys
+
 import pytest
 
-from scripts.update_sheets import build_watch_upserts, plan_updates
+from scripts.update_sheets import (
+    build_history_rows,
+    build_raw_rows,
+    build_watch_upserts,
+    plan_updates,
+)
 
 
-def test_manual_fields_never_overwritten():
+def test_watch_payload_excludes_manual_fields_from_auto_values():
     projects = [{"project_id": "P1", "project_name": "new", "status_auto": "updated"}]
     existing_rows = [{
         "project_id": "P1",
-        "project_name": "old",
-        "status_auto": "old",
         "manual_status": "確認中",
         "memo": "手入力メモ",
         "next_manual_action": "連絡",
@@ -28,11 +35,33 @@ def test_manual_fields_never_overwritten():
         "manual_updated_by",
     ]
 
-    upserts = build_watch_upserts(projects, existing_rows, auto_fields, manual_fields)
+    upserts, _ = build_watch_upserts(projects, existing_rows, auto_fields, manual_fields)
 
-    assert upserts[0]["project_name"] == "new"
-    assert upserts[0]["manual_status"] == "確認中"
-    assert upserts[0]["memo"] == "手入力メモ"
+    assert "manual_status" not in upserts[0]["auto_values"]
+    assert upserts[0]["manual_values_on_insert"]["manual_status"] == "確認中"
+
+
+def test_new_row_manual_fields_are_blank():
+    projects = [{"project_id": "P2", "project_name": "new"}]
+    auto_fields = ["project_id", "project_name"]
+    manual_fields = ["manual_status", "memo"]
+    upserts, _ = build_watch_upserts(projects, [], auto_fields, manual_fields)
+    assert upserts[0]["manual_values_on_insert"] == {"manual_status": "", "memo": ""}
+
+
+def test_history_rows_follow_schema_order():
+    fields = ["changed_at", "project_id", "field_name", "run_id"]
+    items = [{"project_id": "P1", "field_name": "status_auto", "changed_at": "t", "run_id": "r", "extra": "x"}]
+    rows = build_history_rows(items, fields)
+    assert list(rows[0].keys()) == fields
+
+
+def test_raw_rows_follow_schema_order():
+    fields = ["run_id", "project_id", "source_url"]
+    projects = [{"project_id": "P1", "source_url": "u", "x": "y"}]
+    rows = build_raw_rows(projects, fields, "run-1")
+    assert list(rows[0].keys()) == fields
+    assert rows[0]["run_id"] == "run-1"
 
 
 def test_stop_on_header_mismatch():
@@ -41,10 +70,33 @@ def test_stop_on_header_mismatch():
         "watch_headers": ["project_id", "project_name", "manual_status"],
         "auto_fields": ["project_id", "project_name"],
         "manual_fields": ["manual_status"],
-        "history_fields": [],
-        "raw_fields": [],
+        "history_fields": ["changed_at"],
+        "raw_fields": ["run_id"],
     }
-    state = {"JICA_ODA_WATCH": {"headers": ["project_id", "name"], "rows": []}}
+    state = {
+        "JICA_ODA_WATCH": {"headers": ["project_id", "name"], "rows": []},
+        "JICA_ODA_HISTORY": {"headers": ["changed_at"], "rows": []},
+        "JICA_ODA_RAW": {"headers": ["run_id"], "rows": []},
+    }
 
     with pytest.raises(RuntimeError, match="ヘッダー不一致"):
         plan_updates(payload, state, schema)
+
+
+def test_missing_project_id_row_is_skipped_with_warning():
+    upserts, warnings = build_watch_upserts(
+        [{"project_name": "no id"}], [], ["project_id", "project_name"], ["memo"]
+    )
+    assert upserts == []
+    assert warnings
+
+
+def test_dry_run_without_endpoint_or_state_file_succeeds(tmp_path):
+    input_path = tmp_path / "projects.json"
+    input_path.write_text(json.dumps({"projects": [{"project_id": "P1"}], "history": []}), encoding="utf-8")
+
+    cmd = [sys.executable, "scripts/update_sheets.py", "--input", str(input_path), "--dry-run"]
+    result = subprocess.run(cmd, cwd="/workspace/jica-oda-watch", capture_output=True, text=True)
+
+    assert result.returncode == 0
+    assert "dry-run without sheet state" in result.stdout

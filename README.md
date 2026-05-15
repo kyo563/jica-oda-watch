@@ -29,8 +29,6 @@ pip install -r requirements.txt
 任意:
 - `OPENAI_API_KEY`
 - `GEMINI_API_KEY`
-- `APPS_SCRIPT_ENDPOINT`
-- `APPS_SCRIPT_SHARED_SECRET`
 
 ## ローカル実行手順（MVP）
 `--dry-run` は「外部更新（例: Google Sheets書き込み）を止める」ために使います。
@@ -61,7 +59,6 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 ## TODO（次フェーズ）
 - 公式ページ本格パーサ実装
 - Google Sheets API実装
-- Apps Script連携
 - Pages詳細画面とメモ投稿
 
 ## Google Sheets仕様
@@ -81,7 +78,7 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 | シート名 | 役割 | 更新主体 | 備考 |
 |---|---|---|---|
 | JICA_ODA_WATCH | 案件ごとの最新状態を保持するメインシート | crawler / 手入力 | auto fields + manual fields |
-| JICA_ODA_MANUAL | 手入力情報を分離管理する補助シート | 人間 / Apps Script | 将来の双方向入力用 |
+| JICA_ODA_MANUAL | 手入力情報を分離管理する補助シート | 人間 | 将来の双方向入力用 |
 | JICA_ODA_HISTORY | 差分履歴をappend-onlyで保存 | crawler | 削除・上書きしない |
 | JICA_ODA_RAW | 取得原文・証跡・parser結果を保存 | crawler | AI要約だけに依存しない証跡 |
 | JICA_ODA_CONFIG | 運用設定・補助設定を保存 | 人間 / 管理者 | 将来拡張用 |
