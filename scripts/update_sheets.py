@@ -255,9 +255,20 @@ def main():
 
     schema = load_schema()
 
+    if args.state_file and not args.dry_run:
+        raise SystemExit("エラー: --state-file はdry-run専用です")
+
     if args.dry_run and not args.state_file:
         projects = payload.get("projects", payload)
         history_items = payload.get("history", [])
+        seen = set()
+        for p in projects:
+            pid = (p.get("project_id") or "").strip()
+            if not pid:
+                continue
+            if pid in seen:
+                raise SystemExit(f"入力projectsに重複した project_id があります: {pid}")
+            seen.add(pid)
         run_id = datetime.now(timezone.utc).strftime("run-%Y%m%dT%H%M%SZ")
         print("dry-run: no write to Google Sheets")
         print(json.dumps({"counts": {"watch_upserts": len([p for p in projects if (p.get('project_id') or '').strip()]), "history_appends": len(history_items), "raw_appends": len(projects)}, "warning": "dry-run without sheet state; remote manual field preservation not verified", "run_id": run_id}, ensure_ascii=False, indent=2))

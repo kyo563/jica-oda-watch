@@ -124,6 +124,35 @@ def test_raise_error_when_input_projects_have_duplicate_project_id():
         build_watch_upserts(projects, [], ["project_id", "project_name"], ["memo"])
 
 
+def test_cli_fails_when_state_file_without_dry_run(tmp_path):
+    input_path = tmp_path / "projects.json"
+    state_path = tmp_path / "state.json"
+    input_path.write_text(json.dumps({"projects": [{"project_id": "P1"}], "history": []}), encoding="utf-8")
+    state_path.write_text(json.dumps({}), encoding="utf-8")
+
+    cmd = [sys.executable, "scripts/update_sheets.py", "--input", str(input_path), "--state-file", str(state_path)]
+    repo_root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True)
+
+    assert result.returncode != 0
+    assert "--state-file はdry-run専用です" in result.stderr
+
+
+def test_cli_dry_run_without_state_fails_on_duplicate_project_id(tmp_path):
+    input_path = tmp_path / "projects.json"
+    input_path.write_text(
+        json.dumps({"projects": [{"project_id": "P1"}, {"project_id": "P1"}], "history": []}),
+        encoding="utf-8",
+    )
+
+    cmd = [sys.executable, "scripts/update_sheets.py", "--input", str(input_path), "--dry-run"]
+    repo_root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True)
+
+    assert result.returncode != 0
+    assert "入力projectsに重複した project_id があります: P1" in result.stderr
+
+
 class _DummyExec:
     def execute(self):
         return {}
