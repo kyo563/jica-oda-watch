@@ -88,6 +88,13 @@ def validate_crawl_scope(path):
         if not isinstance(val, int) or val < 1:
             raise ValueError(f"crawl_scope.yml: scope.{key} は1以上の整数が必要です")
 
+    if scope["max_pages_per_source"] > 30:
+        raise ValueError("crawl_scope.yml: scope.max_pages_per_source は30以下にしてください")
+    if scope["max_detail_pages"] > 100:
+        raise ValueError("crawl_scope.yml: scope.max_detail_pages は100以下にしてください")
+    if scope["request_interval_seconds"] > 60:
+        raise ValueError("crawl_scope.yml: scope.request_interval_seconds は60以下にしてください")
+
 
 def main():
     try:

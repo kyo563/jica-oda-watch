@@ -23,11 +23,17 @@ RECORD_FIELD_NAME = "__record__"
 def load_records(path, *, required=False):
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
     except FileNotFoundError:
         if required:
             raise FileNotFoundError(f"currentファイルが見つかりません: {path}")
         return []
+
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict) and isinstance(data.get("records"), list):
+        return data["records"]
+    raise ValueError(f"records形式が不正です: {path}")
 
 
 def load_diff_fields(schema_path="config/sheet_schema.yml"):
