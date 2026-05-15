@@ -103,3 +103,24 @@ python scripts/report_discovery.py --input data/raw/discovered.json --output dat
 ## 結論
 
 * #26の初回小規模検証では crawler の list fetch 段階で失敗し、recordsが0件だった。まずは crawler 側の fetch安定化を先に実施し、再検証後に parser/date/PQ品質レビューへ進むべき。
+
+## 再検証: Issue #28 fetch diagnostics
+
+- 実行日: 2026-05-15
+- 修正内容: HTTPFetchErrorに診断情報（status_code / exception_type / response_excerpt等）を追加し、discoverのlist/detail fetch失敗をerrorsへ詳細出力するよう改善。
+- 一時crawl_scope:
+  - schemes: [grant_aid]
+  - sources: [jica_grant_notice]
+  - max_pages_per_source: 1
+  - request_interval_seconds: 2
+  - max_detail_pages: 10
+- records件数: 0
+- errors件数: 1
+- review_status: BLOCK
+- list_fetch_failed 解消: no
+- detail_fetch_failed 件数: 0
+- status_code: N/A
+- exception_type: ProxyError
+- error_message: HTTP接続失敗（ProxyError: Tunnel connection failed: 403 Forbidden）
+- response_excerpt有無: 無
+- 次アクション: 接続経路/Proxy環境を考慮した取得戦略と、source到達性確認手順の追加を検討する。

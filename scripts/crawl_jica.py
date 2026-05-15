@@ -103,21 +103,37 @@ def discover_records(sources, scope, fetcher=fetch_text, sleeper=time.sleep):
             break
         try:
             html = fetcher(source["url"])
-        except HTTPFetchError:
-            errors.append({"level": "error", "reason": "list_fetch_failed", "source_url": source.get("url", "")})
+        except HTTPFetchError as err:
+            details = err.to_dict() if hasattr(err, "to_dict") else {}
+            errors.append({
+                "level": "error",
+                "reason": "list_fetch_failed",
+                "source_url": source.get("url", ""),
+                "error_message": str(err),
+                "status_code": details.get("status_code"),
+                "exception_type": details.get("exception_type", ""),
+                "response_excerpt": details.get("response_excerpt", ""),
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+            })
             continue
         sleeper(request_interval)
         candidates = extract_candidates(html, source["url"], source["source_type"])
         for c in candidates[:max_detail]:
             try:
                 detail_html = fetcher(c["candidate_url"])
-            except HTTPFetchError:
+            except HTTPFetchError as err:
+                details = err.to_dict() if hasattr(err, "to_dict") else {}
                 errors.append({
                     "level": "error",
                     "reason": "detail_fetch_failed",
                     "candidate_url": c.get("candidate_url", ""),
                     "candidate_title": c.get("candidate_title", ""),
                     "source_url": c.get("source_url", source.get("url", "")),
+                    "error_message": str(err),
+                    "status_code": details.get("status_code"),
+                    "exception_type": details.get("exception_type", ""),
+                    "response_excerpt": details.get("response_excerpt", ""),
+                    "fetched_at": datetime.now(timezone.utc).isoformat(),
                 })
                 continue
             records.append(parse_detail(detail_html, c, now))
