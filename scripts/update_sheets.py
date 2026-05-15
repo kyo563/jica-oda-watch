@@ -47,13 +47,21 @@ def validate_state_headers(state, schema):
     validate_headers(state[RAW_SHEET]["headers"], schema["raw_fields"], RAW_SHEET)
 
 
-def build_watch_upserts(projects, existing_watch_rows, auto_fields, manual_fields):
+def build_existing_watch_index(existing_watch_rows, manual_fields):
     manual_by_project = {}
     for row in existing_watch_rows:
         pid = (row.get("project_id") or "").strip()
         if not pid:
             continue
+        if pid in manual_by_project:
+            raise RuntimeError(f"JICA_ODA_WATCH に重複した project_id があります: {pid}")
         manual_by_project[pid] = {k: row.get(k, "") for k in manual_fields}
+    return manual_by_project
+
+
+def build_watch_upserts(projects, existing_watch_rows, auto_fields, manual_fields):
+    manual_by_project = build_existing_watch_index(existing_watch_rows, manual_fields)
+    seen_project_ids = set()
 
     upserts = []
     warnings = []
@@ -62,6 +70,9 @@ def build_watch_upserts(projects, existing_watch_rows, auto_fields, manual_field
         if not pid:
             warnings.append("project_id missing: skipped 1 row")
             continue
+        if pid in seen_project_ids:
+            raise RuntimeError(f"入力projectsに重複した project_id があります: {pid}")
+        seen_project_ids.add(pid)
         auto_values = {k: p.get(k, "") for k in auto_fields if k != "project_id"}
         manual_values = manual_by_project.get(pid, {k: "" for k in manual_fields})
         upserts.append(

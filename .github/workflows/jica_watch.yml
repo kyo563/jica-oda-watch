@@ -17,5 +17,5 @@ jobs:
       - run: python scripts/validate_config.py
       - run: python scripts/crawl_jica.py --watchlist config/watchlist.example.csv --output data/raw/latest.json
       - run: python scripts/diff_records.py --previous data/snapshots/previous.json --current data/raw/latest.json --output site/data/projects.json
-      - run: python scripts/update_sheets.py --input site/data/projects.json --dry-run
       - run: pytest -q
+      - run: python scripts/update_sheets.py --input site/data/projects.json --dry-run
