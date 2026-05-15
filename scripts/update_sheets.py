@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 import argparse
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-import requests
 import yaml
 
 WATCH_SHEET = "JICA_ODA_WATCH"
@@ -35,23 +33,18 @@ def load_schema(schema_path="config/sheet_schema.yml"):
     }
 
 
-def fetch_sheet_state(endpoint, secret):
-    resp = requests.post(
-        endpoint,
-        json={"action": "get_state"},
-        headers={"X-Shared-Secret": secret},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-
 def validate_headers(actual, expected, sheet_name):
     if actual != expected:
         raise RuntimeError(
             f"{sheet_name} ヘッダー不一致のため停止します。"
             f" expected={expected} actual={actual}"
         )
+
+
+def validate_state_headers(state, schema):
+    validate_headers(state[WATCH_SHEET]["headers"], schema["watch_headers"], WATCH_SHEET)
+    validate_headers(state[HISTORY_SHEET]["headers"], schema["history_fields"], HISTORY_SHEET)
+    validate_headers(state[RAW_SHEET]["headers"], schema["raw_fields"], RAW_SHEET)
 
 
 def build_watch_upserts(projects, existing_watch_rows, auto_fields, manual_fields):
@@ -63,47 +56,53 @@ def build_watch_upserts(projects, existing_watch_rows, auto_fields, manual_field
         manual_by_project[pid] = {k: row.get(k, "") for k in manual_fields}
 
     upserts = []
+    warnings = []
     for p in projects:
         pid = (p.get("project_id") or "").strip()
         if not pid:
+            warnings.append("project_id missing: skipped 1 row")
             continue
-        row = {k: p.get(k, "") for k in auto_fields}
-        preserved = manual_by_project.get(pid, {})
-        for mf in manual_fields:
-            row[mf] = preserved.get(mf, "")
-        upserts.append(row)
-    return upserts
+        auto_values = {k: p.get(k, "") for k in auto_fields if k != "project_id"}
+        manual_values = manual_by_project.get(pid, {k: "" for k in manual_fields})
+        upserts.append(
+            {
+                "project_id": pid,
+                "auto_values": auto_values,
+                "manual_values_on_insert": manual_values,
+            }
+        )
+    return upserts, warnings
+
+
+def build_history_rows(history_items, history_fields):
+    rows = []
+    for item in history_items:
+        rows.append({f: item.get(f, "") for f in history_fields})
+    return rows
 
 
 def build_raw_rows(projects, raw_fields, run_id):
-    out = []
+    rows = []
     for p in projects:
-        row = {f: "" for f in raw_fields}
-        row.update(
+        rows.append(
             {
-                "run_id": run_id,
-                "fetched_at": p.get("fetched_at", ""),
-                "project_id": p.get("project_id", ""),
-                "source_type": p.get("source_type", ""),
-                "source_url": p.get("source_url", ""),
-                "parser_name": p.get("parser_name", ""),
-                "parser_version": p.get("parser_version", ""),
-                "raw_text": p.get("raw_text", ""),
-                "evidence_text": p.get("evidence_text", ""),
+                f: (
+                    run_id
+                    if f == "run_id"
+                    else p.get(f, "")
+                )
+                for f in raw_fields
             }
         )
-        out.append(row)
-    return out
+    return rows
 
 
 def plan_updates(payload, state, schema):
     projects = payload.get("projects", payload)
-    history_rows = payload.get("history", [])
-    watch_headers = schema["watch_headers"]
+    history_items = payload.get("history", [])
+    validate_state_headers(state, schema)
 
-    validate_headers(state[WATCH_SHEET]["headers"], watch_headers, WATCH_SHEET)
-
-    watch_upserts = build_watch_upserts(
+    watch_upserts, warnings = build_watch_upserts(
         projects,
         state[WATCH_SHEET].get("rows", []),
         schema["auto_fields"],
@@ -111,6 +110,7 @@ def plan_updates(payload, state, schema):
     )
 
     run_id = datetime.now(timezone.utc).strftime("run-%Y%m%dT%H%M%SZ")
+    history_rows = build_history_rows(history_items, schema["history_fields"])
     raw_rows = build_raw_rows(projects, schema["raw_fields"], run_id)
 
     return {
@@ -118,6 +118,7 @@ def plan_updates(payload, state, schema):
         "watch_upserts": watch_upserts,
         "history_appends": history_rows,
         "raw_appends": raw_rows,
+        "warnings": warnings,
         "counts": {
             "watch_upserts": len(watch_upserts),
             "history_appends": len(history_rows),
@@ -126,50 +127,49 @@ def plan_updates(payload, state, schema):
     }
 
 
-def write_back(endpoint, secret, plan):
-    payload = {
-        "action": "apply_updates",
-        "run_id": plan["run_id"],
-        "watch_upserts": plan["watch_upserts"],
-        "history_appends": plan["history_appends"],
-        "raw_appends": plan["raw_appends"],
-    }
-    resp = requests.post(
-        endpoint,
-        json=payload,
-        headers={"X-Shared-Secret": secret},
-        timeout=60,
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--state-file")
     args = parser.parse_args()
 
     Path(args.input).parent.mkdir(parents=True, exist_ok=True)
     with open(args.input, "r", encoding="utf-8") as f:
         payload = json.load(f)
 
-    endpoint = os.getenv("APPS_SCRIPT_ENDPOINT")
-    secret = os.getenv("APPS_SCRIPT_SHARED_SECRET", "")
-    if not endpoint:
-        raise SystemExit("エラー: APPS_SCRIPT_ENDPOINT が未設定です")
-
     schema = load_schema()
-    state = fetch_sheet_state(endpoint, secret)
-    plan = plan_updates(payload, state, schema)
 
-    if args.dry_run:
+    if args.dry_run and not args.state_file:
+        projects = payload.get("projects", payload)
+        history_items = payload.get("history", [])
+        run_id = datetime.now(timezone.utc).strftime("run-%Y%m%dT%H%M%SZ")
+        summary = {
+            "counts": {
+                "watch_upserts": len([p for p in projects if (p.get("project_id") or "").strip()]),
+                "history_appends": len(history_items),
+                "raw_appends": len(projects),
+            },
+            "warning": "dry-run without sheet state; remote manual field preservation not verified",
+            "run_id": run_id,
+        }
         print("dry-run: no write to Google Sheets")
-        print(json.dumps(plan["counts"], ensure_ascii=False, indent=2))
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
         return
 
-    result = write_back(endpoint, secret, plan)
-    print(json.dumps({"status": "ok", "result": result}, ensure_ascii=False, indent=2))
+    if not args.state_file:
+        raise SystemExit("エラー: 現在は --state-file が必要です（実書き込み未対応）")
+
+    with open(args.state_file, "r", encoding="utf-8") as f:
+        state = json.load(f)
+
+    plan = plan_updates(payload, state, schema)
+    if args.dry_run:
+        print("dry-run: no write to Google Sheets")
+        print(json.dumps({"counts": plan["counts"], "warnings": plan["warnings"]}, ensure_ascii=False, indent=2))
+        return
+
+    raise SystemExit("エラー: 実書き込みは未実装です。Google Sheets API直接方式を次フェーズで実装します。")
 
 
 if __name__ == "__main__":
