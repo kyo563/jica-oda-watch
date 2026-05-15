@@ -11,7 +11,7 @@ JICAのODA案件（特に無償資金協力）を定期監視し、**Google Shee
 ## アーキテクチャ（MVP）
 - 収集: `scripts/crawl_jica.py`
 - 差分: `scripts/diff_records.py`
-- Sheets更新設計: `scripts/update_sheets.py`（骨格）
+- Sheets更新: `scripts/update_sheets.py`
 - 表示: `site/`
 - 定期実行: `.github/workflows/jica_watch.yml`
 
@@ -23,8 +23,12 @@ pip install -r requirements.txt
 ```
 
 ## 必須環境変数
-- 現時点の初回セットアップ（Apps Script方式）では必須環境変数はありません。
-- `GOOGLE_SERVICE_ACCOUNT_JSON` と `SPREADSHEET_ID` は、将来GitHub ActionsからGoogle Sheetsへ自動更新する段階で利用予定です。
+- 初回セットアップ（Apps Script方式）では必須環境変数はありません。
+- GitHub Actionsまたはローカル環境からGoogle Sheetsへ実書き込みする場合は以下が必要です。
+  - `GOOGLE_SERVICE_ACCOUNT_JSON`
+  - `SPREADSHEET_ID`
+
+`GOOGLE_SERVICE_ACCOUNT_JSON` はサービスアカウントJSON全文を1行のsecret値として登録します。認証情報はログに出さないでください。
 
 任意:
 - `OPENAI_API_KEY`
@@ -41,13 +45,27 @@ python scripts/diff_records.py --previous data/snapshots/previous.json --current
 python scripts/update_sheets.py --input site/data/projects.json --dry-run
 ```
 
+Google Sheetsへ実書き込みする場合は、初回セットアップ済みのスプレッドシートにサービスアカウントの `client_email` を編集者として共有したうえで実行します。
+
+```bash
+python scripts/update_sheets.py --input site/data/projects.json
+```
+
+または、環境変数ではなくCLIでスプレッドシートIDを指定できます。
+
+```bash
+python scripts/update_sheets.py --input site/data/projects.json --spreadsheet-id "$SPREADSHEET_ID"
+```
+
 ## snapshot（暫定MVP設計）
 - `data/snapshots/previous.json` が存在しない場合、差分処理は「前回データなし」として扱い、全件 `new` になります。
 - この `previous.json` は**暫定MVP用**です。正本はGoogle Sheetsです。
 - TODO: 将来は `previous.json` ではなく、Google Sheets の WATCH / MANUAL / HISTORY から既存データを読み込む構成に移行します。
 
 ## GitHub Actions / Pages反映（現状）
-- 現在は **dry-run / Pages JSON生成確認段階** です。
+- schedule実行は **dry-run / Pages JSON生成確認段階** です。
+- 手動実行時に `write_sheets=true` を指定した場合のみGoogle Sheetsへ実書き込みします。
+- 実書き込みにはActions Secrets `SPREADSHEET_ID` と `GOOGLE_SERVICE_ACCOUNT_JSON` が必要です。
 - MVPでは `site/data/projects.json` を生成し、必要に応じてコミットしてPagesへ反映する方針です。
 - 自動コミットは次フェーズで安全性確認後に実装します。
 
@@ -58,7 +76,7 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 
 ## TODO（次フェーズ）
 - 公式ページ本格パーサ実装
-- Google Sheets API実装
+- Google Sheets API実装の実運用検証
 - Pages詳細画面とメモ投稿
 
 ## Google Sheets仕様
@@ -86,6 +104,8 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 ### JICA_ODA_WATCH
 - メインシート。`auto fields`（自動更新列）と`manual fields`（手入力列）で構成。
 - manual fieldsは自動更新で上書きしない。
+- 既存行は `project_id` で検索し、auto fieldsだけを更新する。
+- 新規行はauto fieldsと空欄のmanual fieldsを含む1行として追加する。
 
 ### JICA_ODA_MANUAL
 - 手入力専用情報を分離管理する補助シート。
@@ -143,7 +163,7 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 ## Google Sheets運用上の注意
 - 既存シートは削除しない。
 - 2行目以降の既存データは削除しない。
-- 1行目ヘッダーはschemaに合わせて補正される場合がある。
+- 実書き込み時、1行目ヘッダーがschemaと一致しない場合は停止する。
 - manual fieldsは自動更新で上書きしない。
 - WATCH=最新状態、HISTORY=履歴、RAW=証跡を分離運用する。
 - 掲載が消えた案件は削除せず `missing` / `掲載消滅／要確認` として扱う。
