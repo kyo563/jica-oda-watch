@@ -1,0 +1,87 @@
+name: Discover Diagnostics
+
+on:
+  workflow_dispatch:
+
+jobs:
+  discover-diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Ensure raw output directory
+        run: mkdir -p data/raw
+
+      - name: Use small discovery scope
+        run: |
+          cat > config/crawl_scope.yml <<'YAML_SCOPE'
+          scope:
+            schemes:
+              - grant_aid
+            sources:
+              - jica_grant_notice
+            max_pages_per_source: 1
+            request_interval_seconds: 2
+            max_detail_pages: 10
+          YAML_SCOPE
+
+      - name: Validate config
+        run: python scripts/validate_config.py
+
+      - name: Run discover crawl
+        run: python scripts/crawl_jica.py --mode discover --output data/raw/discovered.json
+
+      - name: Generate discovery report
+        run: python scripts/report_discovery.py --input data/raw/discovered.json --output data/raw/discovery_report.md
+
+      - name: Write step summary
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          print("## Discover Diagnostics")
+          print("")
+
+          p = Path("data/raw/discovered.json")
+          if not p.exists():
+              print("- discovered.json: missing")
+              raise SystemExit(0)
+
+          try:
+              data = json.loads(p.read_text(encoding="utf-8"))
+          except Exception as exc:
+              print(f"- discovered.json parse error: {exc}")
+              raise SystemExit(0)
+
+          records = data.get("records", []) if isinstance(data, dict) else data
+          errors = data.get("errors", []) if isinstance(data, dict) else []
+
+          print(f"- records: {len(records)}")
+          print(f"- errors: {len(errors)}")
+          for error in errors[:5]:
+              if isinstance(error, dict):
+                  print(
+                      f"- error: {error.get('reason')} / "
+                      f"{error.get('exception_type')} / {error.get('status_code')}"
+                  )
+          PY
+
+      - name: Upload diagnostics artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: discover-diagnostics
+          path: |
+            data/raw/discovered.json
+            data/raw/discovery_report.md
+          if-no-files-found: warn
+          retention-days: 7
