@@ -172,9 +172,11 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 - `watchlist` mode はMVP・重点監視用として維持します（削除しません）。
 - `discover` mode はJICA公開ページから案件候補を自動発見します。
 - 初期対象は **無償資金協力**、sourceは **`jica_grant_notice` のみ** です。
-- `parse_detail()` は現時点で本格的なdetail HTML解析を未実装で、candidate metadataを使う最小実装です。
+- `parse_detail()` は first-pass のdetail HTML解析を行い、取れる項目だけを抽出します（推測補完しません）。
 - detail取得失敗時は `errors` に記録し、`records`（valid records）へは入れません。
 - scheduleをdiscoverへ切替しません（検証後に判断）。
+- `discovery_report.md`（人間確認用）を必ず確認してからSheets投入判断します。
+- `parse_confidence` が low ばかりの場合は、Sheets投入しません。
 
 ### 実行例
 ```bash
