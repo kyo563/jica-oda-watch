@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -96,7 +97,27 @@ def test_dry_run_without_endpoint_or_state_file_succeeds(tmp_path):
     input_path.write_text(json.dumps({"projects": [{"project_id": "P1"}], "history": []}), encoding="utf-8")
 
     cmd = [sys.executable, "scripts/update_sheets.py", "--input", str(input_path), "--dry-run"]
-    result = subprocess.run(cmd, cwd="/workspace/jica-oda-watch", capture_output=True, text=True)
+    repo_root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True)
 
     assert result.returncode == 0
     assert "dry-run without sheet state" in result.stdout
+
+
+def test_raise_error_when_existing_watch_has_duplicate_project_id():
+    projects = [{"project_id": "P1", "project_name": "new"}]
+    existing_rows = [
+        {"project_id": "P1", "memo": "a"},
+        {"project_id": "P1", "memo": "b"},
+    ]
+    with pytest.raises(RuntimeError, match="JICA_ODA_WATCH に重複した project_id があります: P1"):
+        build_watch_upserts(projects, existing_rows, ["project_id", "project_name"], ["memo"])
+
+
+def test_raise_error_when_input_projects_have_duplicate_project_id():
+    projects = [
+        {"project_id": "P1", "project_name": "a"},
+        {"project_id": "P1", "project_name": "b"},
+    ]
+    with pytest.raises(RuntimeError, match="入力projectsに重複した project_id があります: P1"):
+        build_watch_upserts(projects, [], ["project_id", "project_name"], ["memo"])
