@@ -167,3 +167,35 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 4. `gas/setup_spreadsheet.gs` の内容を `Code.gs` に貼り付ける
 5. `setupJicaOdaWatch` を実行する
 6. 5シート作成後、スプレッドシート側のApps Scriptコードは削除してよい
+
+## discovery mode（初期実装）
+- `watchlist` mode はMVP・重点監視用として維持します（削除しません）。
+- `discover` mode はJICA公開ページから案件候補を自動発見します。
+- 初期対象は **無償資金協力**、sourceは **`jica_grant_notice` のみ** です。
+- scheduleをdiscoverへ切替しません（検証後に判断）。
+
+### 実行例
+```bash
+python scripts/crawl_jica.py --mode watchlist --watchlist config/watchlist.example.csv --output data/raw/latest.json
+python scripts/crawl_jica.py --watchlist config/watchlist.example.csv --output data/raw/latest.json
+python scripts/crawl_jica.py --mode discover --output data/raw/discovered.json
+```
+
+### project_id生成規則
+1. URLに安定IDが取れない場合、`country + project_name + scheme + canonical_url` から決定的に生成します。  
+2. `canonical_url` は query/hash を除去して正規化します。  
+3. 実行時刻・取得順・乱数に依存しません。
+
+### アクセス頻度制限方針
+- `config/crawl_scope.yml` で対象source・ページ数上限・間隔を制限します。
+- 初期値は安全側（例: `max_pages_per_source=10`, `max_detail_pages=20`, `request_interval_seconds=1`）。
+
+### 禁止事項（再確認）
+- watchlist方式を削除しない
+- Google Sheets書き戻し経路を壊さない
+- manual fieldsを上書きしない
+- scheduleをいきなりdiscoverへ切り替えない
+- JICAへ高頻度アクセスしない
+- AI要約を事実判定に使わない
+- 公示消滅を契約確定扱いしない
+- 既存データ行削除 / full-sheet clear をしない
