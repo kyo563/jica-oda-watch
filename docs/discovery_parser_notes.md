@@ -45,3 +45,9 @@
 
 - candidate metadata（candidate_title/evidence_text）は人間確認補助です。`parse_confidence` を上げる根拠には使いません。
 - errors が多い report は Sheets投入不可、または再クロール対象です。
+
+## Discover Diagnostics workflow
+- `.github/workflows/discover_diagnostics.yml` は手動実行（`workflow_dispatch`）専用です。
+- Google Sheets には接続せず、`update_sheets.py` も実行しません。
+- `discovered.json` と `discovery_report.md` を artifact（`discover-diagnostics`）で確認します。
+- 本workflowは本番scheduleではなく、`jica_watch.yml` とは独立しています。
