@@ -7,6 +7,7 @@ import pytest
 
 from scripts.update_sheets import (
     build_history_rows,
+    apply_plan,
     build_raw_rows,
     build_watch_upserts,
     plan_updates,
@@ -121,3 +122,86 @@ def test_raise_error_when_input_projects_have_duplicate_project_id():
     ]
     with pytest.raises(RuntimeError, match="入力projectsに重複した project_id があります: P1"):
         build_watch_upserts(projects, [], ["project_id", "project_name"], ["memo"])
+
+
+class _DummyExec:
+    def execute(self):
+        return {}
+
+
+class _DummyValues:
+    def __init__(self):
+        self.batch_update_calls = []
+        self.append_calls = []
+
+    def batchUpdate(self, **kwargs):
+        self.batch_update_calls.append(kwargs)
+        return _DummyExec()
+
+    def append(self, **kwargs):
+        self.append_calls.append(kwargs)
+        return _DummyExec()
+
+
+class _DummySpreadsheets:
+    def __init__(self):
+        self._values = _DummyValues()
+
+    def values(self):
+        return self._values
+
+
+class _DummyService:
+    def __init__(self):
+        self._spreadsheets = _DummySpreadsheets()
+
+    def spreadsheets(self):
+        return self._spreadsheets
+
+
+def test_apply_plan_updates_only_auto_fields_and_appends_in_schema_order():
+    schema = {
+        "watch_headers": ["project_id", "project_name", "status_auto", "manual_status", "memo"],
+        "auto_fields": ["project_id", "project_name", "status_auto"],
+        "manual_fields": ["manual_status", "memo"],
+        "history_fields": ["changed_at", "project_id", "field_name"],
+        "raw_fields": ["run_id", "project_id", "source_url"],
+    }
+    plan = {
+        "watch_upserts": [
+            {
+                "project_id": "P1",
+                "mode": "update",
+                "row_number": 2,
+                "auto_values": {"project_name": "A", "status_auto": "updated"},
+                "manual_values_on_insert": {"manual_status": "keep", "memo": "keep"},
+            },
+            {
+                "project_id": "P2",
+                "mode": "append",
+                "row_number": None,
+                "auto_values": {"project_id": "P2", "project_name": "B", "status_auto": "new"},
+                "manual_values_on_insert": {"manual_status": "", "memo": ""},
+            },
+        ],
+        "history_appends": [{"changed_at": "t", "project_id": "P2", "field_name": "status_auto"}],
+        "raw_appends": [{"run_id": "r", "project_id": "P2", "source_url": "u"}],
+    }
+
+    service = _DummyService()
+    apply_plan(service, "sid", plan, schema)
+
+    values = service.spreadsheets().values()
+    update = values.batch_update_calls[0]["body"]["data"][0]
+    assert update["range"] == "JICA_ODA_WATCH!B2"
+    assert update["values"][0] == ["A", "updated"]
+
+    watch_append = values.append_calls[0]
+    assert watch_append["range"] == "JICA_ODA_WATCH!A:A"
+    assert watch_append["body"]["values"][0] == ["P2", "B", "new", "", ""]
+
+    history_append = values.append_calls[1]
+    assert history_append["body"]["values"][0] == ["t", "P2", "status_auto"]
+
+    raw_append = values.append_calls[2]
+    assert raw_append["body"]["values"][0] == ["r", "P2", "u"]

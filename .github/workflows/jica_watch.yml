@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '0 21 * * *'
   workflow_dispatch:
+    inputs:
+      write_sheets:
+        description: 'Google Sheetsへ実書き込みするか (true/false)'
+        required: false
+        default: 'false'
 
 jobs:
   run-watch:
@@ -18,4 +23,10 @@ jobs:
       - run: python scripts/crawl_jica.py --watchlist config/watchlist.example.csv --output data/raw/latest.json
       - run: python scripts/diff_records.py --previous data/snapshots/previous.json --current data/raw/latest.json --output site/data/projects.json
       - run: pytest -q
-      - run: python scripts/update_sheets.py --input site/data/projects.json --dry-run
+      - if: ${{ github.event_name != 'workflow_dispatch' || inputs.write_sheets != 'true' }}
+        run: python scripts/update_sheets.py --input site/data/projects.json --dry-run
+      - if: ${{ github.event_name == 'workflow_dispatch' && inputs.write_sheets == 'true' }}
+        env:
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: python scripts/update_sheets.py --input site/data/projects.json
