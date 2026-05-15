@@ -66,6 +66,9 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 
 ## Google Sheets仕様
 
+詳細な初回セットアップ手順とシート仕様は `docs/google_sheets_setup.md` を参照してください。
+
+
 ### 基本方針
 - Google Sheetsを正本とする。
 - GitHub Pagesは閲覧・入力補助UIであり、正本ではない。
@@ -152,10 +155,17 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 
 ### Apps Scriptで初回セットアップする方法
 
+初回セットアップは `gas/setup_spreadsheet.gs` を使用します。
+
+詳細手順は `docs/google_sheets_setup.md` を参照してください。
+
+推奨スプレッドシート名: `JICA ODA Watch Master`
+
+概要:
+
 1. Googleスプレッドシートを開く
-2. 拡張機能 → Apps Script
-3. `gas/setup_spreadsheet.gs` の内容を `Code.gs` に貼り付ける
-4. 保存
-5. `setupJicaOdaWatch` を実行
-6. 権限を許可
-7. 5シートが作成されることを確認
+2. スプレッドシート名を `JICA ODA Watch Master` に変更する
+3. 拡張機能 → Apps Script
+4. `gas/setup_spreadsheet.gs` の内容を `Code.gs` に貼り付ける
+5. `setupJicaOdaWatch` を実行する
+6. 5シート作成後、スプレッドシート側のApps Scriptコードは削除してよい
