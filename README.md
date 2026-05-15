@@ -11,7 +11,7 @@ JICAのODA案件（特に無償資金協力）を定期監視し、**Google Shee
 ## アーキテクチャ（MVP）
 - 収集: `scripts/crawl_jica.py`
 - 差分: `scripts/diff_records.py`
-- Sheets更新設計: `scripts/update_sheets.py`（骨格）
+- Sheets更新: `scripts/update_sheets.py`
 - 表示: `site/`
 - 定期実行: `.github/workflows/jica_watch.yml`
 
@@ -23,8 +23,7 @@ pip install -r requirements.txt
 ```
 
 ## 必須環境変数
-- 現時点の初回セットアップ（Apps Script方式）では必須環境変数はありません。
-- `GOOGLE_SERVICE_ACCOUNT_JSON` と `SPREADSHEET_ID` は、将来GitHub ActionsからGoogle Sheetsへ自動更新する段階で利用予定です。
+- Google Sheetsへ実書き込みする場合は、`GOOGLE_SERVICE_ACCOUNT_JSON` と `SPREADSHEET_ID` が必要です。
 
 任意:
 - `OPENAI_API_KEY`
@@ -47,9 +46,10 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 - TODO: 将来は `previous.json` ではなく、Google Sheets の WATCH / MANUAL / HISTORY から既存データを読み込む構成に移行します。
 
 ## GitHub Actions / Pages反映（現状）
-- 現在は **dry-run / Pages JSON生成確認段階** です。
-- MVPでは `site/data/projects.json` を生成し、必要に応じてコミットしてPagesへ反映する方針です。
-- 自動コミットは次フェーズで安全性確認後に実装します。
+- `schedule` 実行は dry-run のみです（Google Sheetsへ実書き込みしません）。
+- `workflow_dispatch` で `write_sheets=true` の場合のみ Google Sheetsへ実書き込みします。
+- 実書き込み前に `pytest -q` を実行します。
+- Secrets（`GOOGLE_SERVICE_ACCOUNT_JSON`, `SPREADSHEET_ID`）は実書き込みstepにのみ渡します。
 
 ## 制約
 - 公示消滅は契約確定とみなさない（`missing` + 要確認）
@@ -143,7 +143,8 @@ python scripts/update_sheets.py --input site/data/projects.json --dry-run
 ## Google Sheets運用上の注意
 - 既存シートは削除しない。
 - 2行目以降の既存データは削除しない。
-- 1行目ヘッダーはschemaに合わせて補正される場合がある。
+- 初回セットアップApps Scriptでは、1行目ヘッダーをschemaに合わせて設定・補正する。
+- Google Sheets APIによる実書き込み時は、ヘッダーがschemaと一致しない場合、補正せず停止する。
 - manual fieldsは自動更新で上書きしない。
 - WATCH=最新状態、HISTORY=履歴、RAW=証跡を分離運用する。
 - 掲載が消えた案件は削除せず `missing` / `掲載消滅／要確認` として扱う。
