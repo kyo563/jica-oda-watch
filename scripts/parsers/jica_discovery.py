@@ -64,13 +64,13 @@ class _DetailTextParser(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         self._tag_stack.append(tag)
-        if tag in {"script", "style"}:
+        if tag in {"script", "style", "nav", "header", "footer"}:
             self._skip_depth += 1
 
     def handle_endtag(self, tag):
         if self._tag_stack:
             self._tag_stack.pop()
-        if tag in {"script", "style"} and self._skip_depth > 0:
+        if tag in {"script", "style", "nav", "header", "footer"} and self._skip_depth > 0:
             self._skip_depth -= 1
 
     def handle_data(self, data):
@@ -103,36 +103,39 @@ def _truncate(text: str, limit: int) -> str:
 def _extract_notice_date(text: str) -> str:
     if not text:
         return ""
-    patterns = [
-        r"(20\d{2})[./年\-](\d{1,2})[./月\-](\d{1,2})日?",
-        r"(令和\d{1,2})年\s*(\d{1,2})月\s*(\d{1,2})日",
-    ]
-    for p in patterns:
-        m = re.search(p, text)
-        if m:
-            return m.group(0)
+    date_pat = r"((?:20\d{2})[./年\-](?:\d{1,2})[./月\-](?:\d{1,2})日?|(?:令和\d{1,2})年\s*(?:\d{1,2})月\s*(?:\d{1,2})日)"
+    label_pat = r"(?:公示日|公告日|掲載日|更新日)"
+    m = re.search(rf"{label_pat}\s*[:：]?\s*{date_pat}", text)
+    if m:
+        return m.group(1)
+    m = re.search(rf"{date_pat}\s*[:：]?\s*{label_pat}", text)
+    if m:
+        return m.group(1)
     return ""
 
 
 def _extract_evidence(text: str) -> str:
     if not text:
         return ""
-    keys = ["公告", "公示", "入札", "調達", "事前資格審査", "PQ", "無償資金協力"]
+    keys = ["公告", "公示", "入札", "調達", "事前資格審査", "PQ", "ＰＱ", "無償資金協力"]
     for key in keys:
         idx = text.find(key)
         if idx >= 0:
             start = max(0, idx - 60)
             end = min(len(text), idx + 140)
             return _truncate(text[start:end], EVIDENCE_LIMIT)
-    return _truncate(text, EVIDENCE_LIMIT)
+    return ""
 
 
 def _detect_pq_required(text: str) -> str:
     if not text:
         return "要確認"
-    if re.search(r"(PQ|ＰＱ|事前資格審査).{0,30}(不要|実施しない|なし)", text):
+    term = r"(?:PQ|ＰＱ|事前資格審査)"
+    neg = r"(?:不要|なし|実施しない|実施しません|行わない|行いません|対象外|該当なし|該当しない)"
+    pos = r"(?:実施します|実施する|行います|行う|受付|提出|申請|参加資格)"
+    if re.search(rf"{term}.{{0,24}}{neg}|{neg}.{{0,24}}{term}", text):
         return "なし"
-    if re.search(r"(PQ|ＰＱ|事前資格審査)", text):
+    if re.search(rf"{term}.{{0,24}}{pos}|{pos}.{{0,24}}{term}", text):
         return "あり"
     return "要確認"
 
@@ -161,7 +164,8 @@ def parse_detail(html: str, candidate: dict, fetched_at: str) -> dict:
 
     has_heading = bool(_normalize_text(heading))
     has_body = len(raw_text) >= 40
-    parse_confidence = "medium" if has_heading and notice_url and has_body else "low"
+    has_evidence = bool(evidence_text)
+    parse_confidence = "medium" if has_heading and notice_url and has_body and has_evidence else "low"
 
     project_id = generate_project_id("", title, "無償資金協力", notice_url)
     return {
