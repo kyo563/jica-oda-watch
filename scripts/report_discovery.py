@@ -71,8 +71,10 @@ def build_report(obj: dict) -> str:
     review_status = _review_status(records, errors, dups, missing, low_rate)
     error_rate = (len(errors) / len(records)) if records else (1.0 if errors else 0.0)
     reject_warnings = [e for e in errors if (e.get("reason") or "") == "candidate_rejected"]
+    deduped_warnings = [e for e in errors if (e.get("reason") or "") == "candidate_deduped"]
     reject_reason_counts = Counter((e.get("reject_reason") or "unknown") for e in reject_warnings)
     pdf_metadata_only_count = sum(1 for r in records if (r.get("status_detail") or "") == "pdf_metadata_only")
+    non_project_records = sum(1 for r in records if any(x in (r.get("notice_url") or "") for x in ["/forresearchers", "/about/announce/notice", "/about/announce/manual", "/about/disc/settle", "/about/chotatsu/program/"]))
     mojibake_detected = sum(1 for r in records if any(x in (r.get("project_name") or "") for x in ["ã", "ã", "ã", "Â", "ï¼"]))
 
     lines = [
@@ -82,7 +84,7 @@ def build_report(obj: dict) -> str:
         f"- review_status: {review_status}",
         f"- records件数: {len(records)}",
         f"- errors件数: {len(errors)}",
-        f"- project_id重複件数: {len(dups)}",
+        f"- duplicate_project_id件数: {len(dups)}",
         f"- project_id_missing件数: {missing['project_id_missing']}",
         f"- error率(records比): {error_rate:.0%}",
         f"- notice_url欠落件数: {missing['notice_url_missing']}",
@@ -102,7 +104,10 @@ def build_report(obj: dict) -> str:
         f"- list_fetch_success: {meta.get('list_fetch_success', 0)}",
         f"- anchors_seen: {meta.get('anchors_seen', 0)}",
         f"- candidates_found: {meta.get('candidates_found', 0)}",
+        f"- candidate_deduped: {len(deduped_warnings)}",
         f"- candidate_rejected: {len(reject_warnings)}",
+        f"- pdf_metadata_only件数: {pdf_metadata_only_count}",
+        f"- non_project records件数: {non_project_records}",
 
         "",
         "## parse_confidence別件数",

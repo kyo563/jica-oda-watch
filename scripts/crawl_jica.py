@@ -19,6 +19,7 @@ try:
         parse_detail,
         _is_pdf_candidate,
         _should_reject_candidate,
+        dedupe_and_prioritize_candidates,
     )
     from scripts.source_loader import load_enabled_sources
 except ModuleNotFoundError:
@@ -32,6 +33,7 @@ except ModuleNotFoundError:
         parse_detail,
         _is_pdf_candidate,
         _should_reject_candidate,
+        dedupe_and_prioritize_candidates,
     )
     from source_loader import load_enabled_sources
 
@@ -153,7 +155,16 @@ def discover_records(sources, scope, fetcher=fetch_text, sleeper=time.sleep):
                 "rejected_link_samples": diagnostics.get("rejected_link_samples", []),
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
             })
-        for c in candidates[:max_detail]:
+        prioritized, deduped_count = dedupe_and_prioritize_candidates(candidates, max_detail)
+        for _ in range(deduped_count):
+            errors.append({
+                "level": "warning",
+                "reason": "candidate_deduped",
+                "source_url": source.get("url", ""),
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+        for c in prioritized:
             rejected, reject_reason = _should_reject_candidate(c)
             if rejected:
                 errors.append({
@@ -206,6 +217,8 @@ def discover_records(sources, scope, fetcher=fetch_text, sleeper=time.sleep):
             "list_fetch_success": list_fetch_success,
             "anchors_seen": anchors_seen_total,
             "candidates_found": candidates_found_total,
+            "candidate_deduped": sum(1 for e in errors if e.get("reason")=="candidate_deduped"),
+            "candidate_rejected": sum(1 for e in errors if e.get("reason")=="candidate_rejected"),
         },
     }
 
