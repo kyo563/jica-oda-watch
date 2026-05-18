@@ -9,7 +9,7 @@ except ModuleNotFoundError:
     from utils_project_id import canonicalize_url, generate_project_id
 
 PARSER_NAME = "jica_discovery"
-PARSER_VERSION = "0.1"
+PARSER_VERSION = "0.2"
 RAW_TEXT_LIMIT = 1200
 EVIDENCE_LIMIT = 220
 
@@ -126,6 +126,87 @@ def _extract_notice_date(text: str) -> str:
     return ""
 
 
+
+def _is_pdf_candidate(candidate: dict) -> bool:
+    kind = (candidate.get("candidate_kind") or "").lower()
+    if kind == "pdf":
+        return True
+    url = (candidate.get("candidate_url") or "").lower()
+    return url.endswith(".pdf") or ".pdf?" in url or ".pdf#" in url
+
+
+def extract_notice_date_from_text(text: str) -> str:
+    if not text:
+        return ""
+    t = _normalize_text(text)
+    patterns = [
+        r"(20\d{2})年\s*(\d{1,2})月\s*(\d{1,2})日",
+        r"(20\d{2})/(\d{1,2})/(\d{1,2})",
+        r"(20\d{2})-(\d{1,2})-(\d{1,2})",
+    ]
+    for pat in patterns:
+        m = re.search(pat, t)
+        if m:
+            y, mo, d = m.groups()
+            return f"{int(y):04d}-{int(mo):02d}-{int(d):02d}"
+    return ""
+
+
+def _should_reject_candidate(candidate: dict) -> tuple[bool, str]:
+    source_url = canonicalize_url(candidate.get("source_url") or "")
+    url = canonicalize_url(candidate.get("candidate_url") or "")
+    title = _normalize_text(candidate.get("candidate_title") or "")
+    if not url:
+        return True, "non_project_navigation_page"
+    if source_url and url == source_url:
+        return True, "non_project_navigation_page"
+    if "/about/chotatsu/program" in url:
+        return True, "non_project_navigation_page"
+
+    nav_terms = ["調達情報", "一覧", "カテゴリ", "カテゴリー", "プログラム", "案内"]
+    if any(term in title for term in nav_terms) and not extract_notice_date_from_text(title):
+        return True, "non_project_navigation_page"
+
+    if url.endswith("/index.html") and not extract_notice_date_from_text(title):
+        if any(term in title for term in nav_terms) or any(part in url for part in ["/chotatsu/", "/procurement/"]):
+            return True, "non_project_navigation_page"
+
+    return False, ""
+
+
+def build_pdf_metadata_only_record(candidate: dict, fetched_at: str) -> dict:
+    notice_url = canonicalize_url(candidate.get("candidate_url") or "")
+    title = _normalize_text(candidate.get("candidate_title") or "") or "要確認"
+    notice_date = extract_notice_date_from_text(title)
+    raw_text = _truncate(f"{title} {notice_url}", RAW_TEXT_LIMIT)
+    project_id = generate_project_id("", title, "無償資金協力", notice_url)
+    return {
+        "project_id": project_id,
+        "country": "",
+        "project_name": title,
+        "sector": "",
+        "scheme": "無償資金協力",
+        "ga_date": "",
+        "pq_required": "要確認",
+        "notice_date": notice_date,
+        "notice_media": "JICA",
+        "notice_url": notice_url,
+        "result_url": "",
+        "oda_url": candidate.get("source_url", ""),
+        "status_auto": "要確認",
+        "status_detail": "pdf_metadata_only",
+        "source_type": candidate.get("source_type", "jica_grant_notice"),
+        "source_url": candidate.get("source_url", ""),
+        "raw_text": raw_text,
+        "evidence_text": title,
+        "parser_name": PARSER_NAME,
+        "parser_version": PARSER_VERSION,
+        "parse_confidence": "low",
+        "fetched_at": fetched_at,
+        "last_checked": fetched_at,
+        "change_flag": "new",
+    }
+
 def _extract_evidence(text: str) -> str:
     if not text:
         return ""
@@ -178,7 +259,7 @@ def parse_detail(html: str, candidate: dict, fetched_at: str) -> dict:
 
     text = _normalize_text(" ".join(parser.text_parts))
     raw_text = _truncate(text, RAW_TEXT_LIMIT)
-    notice_date = _extract_notice_date(text) or _normalize_text(candidate.get("notice_date_hint") or "")
+    notice_date = _extract_notice_date(text) or extract_notice_date_from_text(candidate.get("candidate_title") or "") or _normalize_text(candidate.get("notice_date_hint") or "")
     detail_evidence = _extract_evidence(text)
     candidate_evidence = _normalize_text(candidate.get("evidence_text") or "")
     evidence_text = detail_evidence or candidate_evidence
@@ -187,7 +268,7 @@ def parse_detail(html: str, candidate: dict, fetched_at: str) -> dict:
     has_heading = bool(_normalize_text(heading))
     has_body = len(raw_text) >= 40
     has_evidence = bool(detail_evidence)
-    is_pdf = (candidate.get("candidate_kind") or "") == "pdf" or notice_url.lower().endswith(".pdf")
+    is_pdf = _is_pdf_candidate(candidate)
     parse_confidence = "medium" if (has_heading and notice_url and has_body and has_evidence and not is_pdf) else "low"
 
     project_id = generate_project_id("", title, "無償資金協力", notice_url)
