@@ -1,7 +1,7 @@
 from scripts.report_discovery import build_report
 
 
-def test_report_shows_rejected_and_pdf_metadata_only_counts():
+def test_report_shows_diagnostics_counts():
     obj = {
         "records": [
             {
@@ -19,13 +19,13 @@ def test_report_shows_rejected_and_pdf_metadata_only_counts():
         ],
         "errors": [
             {"reason": "candidate_rejected", "reject_reason": "non_project_navigation_page"},
-            {"reason": "candidate_rejected", "reject_reason": "non_project_navigation_page"},
+            {"reason": "candidate_deduped"},
         ],
         "meta": {"sources_checked": 1, "list_fetch_success": 1, "anchors_seen": 10, "candidates_found": 3},
     }
     report = build_report(obj)
-    assert "candidate_rejected: 2" in report
+    assert "candidate_deduped: 1" in report
+    assert "candidate_rejected: 1" in report
     assert "pdf_metadata_only件数: 1" in report
-    assert "non_project_navigation_page: 2" in report
-    assert "notice_date欠落件数: 0" in report
+    assert "duplicate_project_id件数: 0" in report
     assert "review_status: BLOCK" in report

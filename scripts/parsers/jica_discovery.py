@@ -9,7 +9,7 @@ except ModuleNotFoundError:
     from utils_project_id import canonicalize_url, generate_project_id
 
 PARSER_NAME = "jica_discovery"
-PARSER_VERSION = "0.2"
+PARSER_VERSION = "0.3"
 RAW_TEXT_LIMIT = 1200
 EVIDENCE_LIMIT = 220
 
@@ -18,6 +18,18 @@ _TITLE_KEYWORDS = [
     "参加意思確認", "参加資格", "コンサルタント", "業務実施契約", "機材", "施工",
 ]
 _HREF_KEYWORDS = ["chotatsu", "procurement", "bid", "keiyaku", ".pdf"]
+
+_NON_PROJECT_PATHS = [
+    "/forresearchers",
+    "/about/announce/notice",
+    "/about/announce/manual",
+    "/about/disc/settle",
+    "/about/announce/",
+    "/about/chotatsu/program/",
+]
+_NON_PROJECT_TITLE_EXACT = {"Japanese"}
+_NON_PROJECT_TITLE_CONTAINS = ["公告・公示情報", "調達ガイドライン", "様式", "決算公告", "for Researchers", "調達情報"]
+_MAIN_SELECTORS = ["<main", "<article", "id=\"contents\"", "class=\"contents\"", "class=\"main\"", "class=\"l-main\""]
 
 
 class _CandidateParser(HTMLParser):
@@ -79,9 +91,54 @@ def _is_candidate_link(title: str, href: str) -> bool:
     return any(k in title_norm for k in _TITLE_KEYWORDS) or any(k in href_norm for k in _HREF_KEYWORDS)
 
 
+def _extract_candidate_html(html: str) -> str:
+    low = (html or "").lower()
+    for marker in _MAIN_SELECTORS:
+        idx = low.find(marker.lower())
+        if idx >= 0:
+            return (html or "")[idx:]
+    return html or ""
+
+
+def _canonical_candidate_url(url: str) -> str:
+    c = canonicalize_url(url or "")
+    if c.endswith("/") and len(c) > len("https://"):
+        c = c.rstrip("/")
+    return c
+
+
+def dedupe_and_prioritize_candidates(candidates: list[dict], max_detail: int) -> tuple[list[dict], int]:
+    seen = set()
+    deduped = []
+    deduped_count = 0
+    for c in candidates:
+        norm = _canonical_candidate_url(c.get("candidate_url") or "")
+        if not norm:
+            deduped_count += 1
+            continue
+        if norm in seen:
+            deduped_count += 1
+            continue
+        seen.add(norm)
+        copied = dict(c)
+        copied["candidate_url"] = norm
+        copied["source_url"] = _canonical_candidate_url(copied.get("source_url") or "")
+        deduped.append(copied)
+
+    def score(c: dict) -> tuple[int,int,int]:
+        title = _normalize_text(c.get("candidate_title") or "")
+        is_pdf = 1 if _is_pdf_candidate(c) else 0
+        has_date = 1 if extract_notice_date_from_text(title) else 0
+        has_notice_word = 1 if any(k in title for k in ["公示", "公告"]) else 0
+        return (-is_pdf, -has_date, -has_notice_word)
+
+    deduped.sort(key=score)
+    return deduped[:max_detail], deduped_count
+
+
 def inspect_candidate_links(html: str, source_url: str, source_type: str) -> dict:
     parser = _CandidateParser(source_url, source_type)
-    parser.feed(html or "")
+    parser.feed(_extract_candidate_html(html))
     return {
         "anchors_seen": parser.anchors_seen,
         "candidates_found": len(parser.candidates),
@@ -92,7 +149,7 @@ def inspect_candidate_links(html: str, source_url: str, source_type: str) -> dic
 
 def extract_candidates_with_diagnostics(html: str, source_url: str, source_type: str) -> tuple[list[dict], dict]:
     parser = _CandidateParser(source_url, source_type)
-    parser.feed(html or "")
+    parser.feed(_extract_candidate_html(html))
     return parser.candidates, {
         "anchors_seen": parser.anchors_seen,
         "candidates_found": len(parser.candidates),
@@ -153,24 +210,18 @@ def extract_notice_date_from_text(text: str) -> str:
 
 
 def _should_reject_candidate(candidate: dict) -> tuple[bool, str]:
-    source_url = canonicalize_url(candidate.get("source_url") or "")
-    url = canonicalize_url(candidate.get("candidate_url") or "")
+    source_url = _canonical_candidate_url(candidate.get("source_url") or "")
+    url = _canonical_candidate_url(candidate.get("candidate_url") or "")
     title = _normalize_text(candidate.get("candidate_title") or "")
-    if not url:
+    if not url or (source_url and url == source_url):
         return True, "non_project_navigation_page"
-    if source_url and url == source_url:
+    url_low = url.lower()
+    if any(path in url_low for path in _NON_PROJECT_PATHS):
         return True, "non_project_navigation_page"
-    if "/about/chotatsu/program" in url:
+    if title in _NON_PROJECT_TITLE_EXACT:
         return True, "non_project_navigation_page"
-
-    nav_terms = ["調達情報", "一覧", "カテゴリ", "カテゴリー", "プログラム", "案内"]
-    if any(term in title for term in nav_terms) and not extract_notice_date_from_text(title):
+    if any(term in title for term in _NON_PROJECT_TITLE_CONTAINS):
         return True, "non_project_navigation_page"
-
-    if url.endswith("/index.html") and not extract_notice_date_from_text(title):
-        if any(term in title for term in nav_terms) or any(part in url for part in ["/chotatsu/", "/procurement/"]):
-            return True, "non_project_navigation_page"
-
     return False, ""
 
 
@@ -269,7 +320,9 @@ def parse_detail(html: str, candidate: dict, fetched_at: str) -> dict:
     has_body = len(raw_text) >= 40
     has_evidence = bool(detail_evidence)
     is_pdf = _is_pdf_candidate(candidate)
-    parse_confidence = "medium" if (has_heading and notice_url and has_body and has_evidence and not is_pdf) else "low"
+    has_date = bool(notice_date)
+    has_title_hint = any(k in title for k in ["調達", "公示", "公告", "入札"])
+    parse_confidence = "medium" if (has_heading and notice_url and has_body and has_evidence and has_date and has_title_hint and not is_pdf) else "low"
 
     project_id = generate_project_id("", title, "無償資金協力", notice_url)
     return {
