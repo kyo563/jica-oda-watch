@@ -17,7 +17,7 @@ def test_discover_empty_warning_no_network(monkeypatch):
     sources = [{"source_type": "jica_grant_notice", "url": "https://example.com", "enabled": True}]
     scope = {"sources": ["jica_grant_notice"], "max_pages_per_source": 1, "max_detail_pages": 5, "request_interval_seconds": 1}
 
-    monkeypatch.setattr(crawl_jica, 'extract_candidates', lambda *_: [])
+    monkeypatch.setattr(crawl_jica, 'extract_candidates_with_diagnostics', lambda *_: ([], {"anchors_seen": 0, "candidates_found": 0, "sample_links": [], "rejected_link_samples": []}))
 
     calls = []
 
@@ -31,3 +31,4 @@ def test_discover_empty_warning_no_network(monkeypatch):
     assert calls == ['https://example.com']
     assert result['records'] == []
     assert sleeper_calls == [1]
+    assert any(e.get('reason') == 'no_candidates_found' for e in result['errors'])

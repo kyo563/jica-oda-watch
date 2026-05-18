@@ -11,12 +11,12 @@ import yaml
 try:
     from scripts.http_client import HTTPFetchError, fetch_text
     from scripts.parsers import parse_jica_grant_notice
-    from scripts.parsers.jica_discovery import PARSER_NAME, PARSER_VERSION, extract_candidates, parse_detail
+    from scripts.parsers.jica_discovery import PARSER_NAME, PARSER_VERSION, extract_candidates_with_diagnostics, parse_detail
     from scripts.source_loader import load_enabled_sources
 except ModuleNotFoundError:
     from http_client import HTTPFetchError, fetch_text
     from parsers import parse_jica_grant_notice
-    from parsers.jica_discovery import PARSER_NAME, PARSER_VERSION, extract_candidates, parse_detail
+    from parsers.jica_discovery import PARSER_NAME, PARSER_VERSION, extract_candidates_with_diagnostics, parse_detail
     from source_loader import load_enabled_sources
 
 
@@ -93,6 +93,10 @@ def discover_records(sources, scope, fetcher=fetch_text, sleeper=time.sleep):
     records, errors, count = [], [], 0
     now = datetime.now(timezone.utc).isoformat()
     request_interval = int(scope.get("request_interval_seconds", 1))
+    sources_checked = 0
+    list_fetch_success = 0
+    anchors_seen_total = 0
+    candidates_found_total = 0
 
     for source in sources:
         if source["source_type"] not in target_sources:
@@ -101,6 +105,7 @@ def discover_records(sources, scope, fetcher=fetch_text, sleeper=time.sleep):
             continue
         if count >= max_pages:
             break
+        sources_checked += 1
         try:
             html = fetcher(source["url"])
         except HTTPFetchError as err:
@@ -117,7 +122,21 @@ def discover_records(sources, scope, fetcher=fetch_text, sleeper=time.sleep):
             })
             continue
         sleeper(request_interval)
-        candidates = extract_candidates(html, source["url"], source["source_type"])
+        list_fetch_success += 1
+        candidates, diagnostics = extract_candidates_with_diagnostics(html, source["url"], source["source_type"])
+        anchors_seen_total += diagnostics.get("anchors_seen", 0)
+        candidates_found_total += diagnostics.get("candidates_found", 0)
+        if not candidates:
+            errors.append({
+                "level": "warning",
+                "reason": "no_candidates_found",
+                "source_url": source.get("url", ""),
+                "anchors_seen": diagnostics.get("anchors_seen", 0),
+                "candidates_found": diagnostics.get("candidates_found", 0),
+                "sample_links": diagnostics.get("sample_links", []),
+                "rejected_link_samples": diagnostics.get("rejected_link_samples", []),
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+            })
         for c in candidates[:max_detail]:
             try:
                 detail_html = fetcher(c["candidate_url"])
@@ -144,7 +163,18 @@ def discover_records(sources, scope, fetcher=fetch_text, sleeper=time.sleep):
     errors.extend(validation_errors)
     if not valid:
         print("warning: discover mode generated no valid records")
-    return {"records": valid, "errors": errors, "meta": {"parser_name": PARSER_NAME, "parser_version": PARSER_VERSION}}
+    return {
+        "records": valid,
+        "errors": errors,
+        "meta": {
+            "parser_name": PARSER_NAME,
+            "parser_version": PARSER_VERSION,
+            "sources_checked": sources_checked,
+            "list_fetch_success": list_fetch_success,
+            "anchors_seen": anchors_seen_total,
+            "candidates_found": candidates_found_total,
+        },
+    }
 
 
 def main():

@@ -72,3 +72,28 @@ def test_build_report_empty_records_with_errors():
     assert "errors件数: 2" in report
     assert "review_status: BLOCK" in report
     assert "fetch_failed: 2" in report
+
+
+def test_build_report_shows_candidate_diagnostics_and_warning_details():
+    obj = {
+        "records": [],
+        "errors": [{
+            "level": "warning",
+            "reason": "no_candidates_found",
+            "source_url": "https://example.com/list",
+            "anchors_seen": 12,
+            "candidates_found": 0,
+            "sample_links": [{"title": "調達情報", "url": "https://example.com/chotatsu"}],
+            "rejected_link_samples": [{"title": "トップ", "url": "https://example.com/top"}],
+        }],
+        "meta": {"sources_checked": 1, "list_fetch_success": 1, "anchors_seen": 12, "candidates_found": 0},
+    }
+    report = build_report(obj)
+    assert "review_status: BLOCK" in report
+    assert "sources_checked: 1" in report
+    assert "list_fetch_success: 1" in report
+    assert "anchors_seen: 12" in report
+    assert "candidates_found: 0" in report
+    assert "no_candidates_found" in report
+    assert "sample_links" in report
+    assert "rejected_link_samples" in report
