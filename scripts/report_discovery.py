@@ -58,6 +58,7 @@ def _review_status(records: list[dict], errors: list[dict], dups: list[str], mis
 def build_report(obj: dict) -> str:
     records = obj.get("records", [])
     errors = obj.get("errors", [])
+    meta = obj.get("meta", {})
 
     confidence = Counter((r.get("parse_confidence") or "unknown") for r in records)
     source_types = Counter((r.get("source_type") or "unknown") for r in records)
@@ -88,6 +89,14 @@ def build_report(obj: dict) -> str:
         f"- parse_confidence全件low: {'はい' if all_low else 'いいえ'}",
         f"- parse_confidence low率: {low_rate:.0%}",
         f"- high-risk records総数: 0",
+        "",
+        "",
+        "## candidate抽出診断",
+        f"- sources_checked: {meta.get('sources_checked', 0)}",
+        f"- list_fetch_success: {meta.get('list_fetch_success', 0)}",
+        f"- anchors_seen: {meta.get('anchors_seen', 0)}",
+        f"- candidates_found: {meta.get('candidates_found', 0)}",
+
         "",
         "## parse_confidence別件数",
     ]
@@ -181,6 +190,25 @@ def build_report(obj: dict) -> str:
         reason_counts = Counter((e.get("reason") or "unknown") for e in errors)
         for reason, cnt in sorted(reason_counts.items()):
             lines.append(f"- {reason}: {cnt}")
+
+
+    no_candidate_warnings = [e for e in errors if (e.get("reason") or "") == "no_candidates_found"]
+    if no_candidate_warnings:
+        lines.extend(["", "## no_candidates_found詳細"])
+        for w in no_candidate_warnings:
+            lines.append(f"- source_url: {w.get('source_url','')}")
+            lines.append(f"  - anchors_seen: {w.get('anchors_seen', 0)}")
+            lines.append(f"  - candidates_found: {w.get('candidates_found', 0)}")
+            sample_links = w.get("sample_links", [])
+            if sample_links:
+                lines.append("  - sample_links:")
+                for item in sample_links[:10]:
+                    lines.append(f"    - [{item.get('title','')}]({item.get('url','')})")
+            rejected = w.get("rejected_link_samples", [])
+            if rejected:
+                lines.append("  - rejected_link_samples:")
+                for item in rejected[:20]:
+                    lines.append(f"    - [{item.get('title','')}]({item.get('url','')})")
 
     return "\n".join(lines) + "\n"
 

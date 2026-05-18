@@ -13,12 +13,22 @@ PARSER_VERSION = "0.1"
 RAW_TEXT_LIMIT = 1200
 EVIDENCE_LIMIT = 220
 
+_TITLE_KEYWORDS = [
+    "調達", "入札", "案件", "公示", "公告", "契約", "事前資格審査", "PQ", "ＰＱ",
+    "参加意思確認", "参加資格", "コンサルタント", "業務実施契約", "機材", "施工",
+]
+_HREF_KEYWORDS = ["chotatsu", "procurement", "bid", "keiyaku", ".pdf"]
+
 
 class _CandidateParser(HTMLParser):
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, source_type: str):
         super().__init__()
         self.base_url = base_url
+        self.source_type = source_type
         self.candidates = []
+        self.sample_links = []
+        self.rejected_link_samples = []
+        self.anchors_seen = 0
         self._href = ""
         self._text = ""
 
@@ -37,56 +47,58 @@ class _CandidateParser(HTMLParser):
             return
         title = self._text.strip()
         url = urljoin(self.base_url, self._href)
-        if title and ("調達" in title or "入札" in title or "案件" in title):
-            self.candidates.append({
-                "source_type": "jica_grant_notice",
+        self.anchors_seen += 1
+
+        if len(self.sample_links) < 10:
+            self.sample_links.append({"title": title, "url": url})
+
+        if _is_candidate_link(title, self._href):
+            candidate = {
+                "source_type": self.source_type,
                 "source_url": self.base_url,
                 "candidate_url": url,
-                "candidate_title": title,
+                "candidate_title": title or "(no title)",
                 "country_hint": "",
                 "scheme_hint": "無償資金協力",
                 "notice_date_hint": "",
                 "evidence_text": title,
-            })
+            }
+            if self._href.lower().endswith(".pdf"):
+                candidate["candidate_kind"] = "pdf"
+            self.candidates.append(candidate)
+        elif len(self.rejected_link_samples) < 20:
+            self.rejected_link_samples.append({"title": title, "url": url})
+
         self._href = ""
         self._text = ""
 
 
-class _DetailTextParser(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.title = ""
-        self.h1_texts = []
-        self.h2_texts = []
-        self.text_parts = []
-        self._tag_stack = []
-        self._skip_depth = 0
+def _is_candidate_link(title: str, href: str) -> bool:
+    title_norm = _normalize_text(title)
+    href_norm = (href or "").lower()
+    return any(k in title_norm for k in _TITLE_KEYWORDS) or any(k in href_norm for k in _HREF_KEYWORDS)
 
-    def handle_starttag(self, tag, attrs):
-        self._tag_stack.append(tag)
-        if tag in {"script", "style", "nav", "header", "footer"}:
-            self._skip_depth += 1
 
-    def handle_endtag(self, tag):
-        if self._tag_stack:
-            self._tag_stack.pop()
-        if tag in {"script", "style", "nav", "header", "footer"} and self._skip_depth > 0:
-            self._skip_depth -= 1
+def inspect_candidate_links(html: str, source_url: str, source_type: str) -> dict:
+    parser = _CandidateParser(source_url, source_type)
+    parser.feed(html or "")
+    return {
+        "anchors_seen": parser.anchors_seen,
+        "candidates_found": len(parser.candidates),
+        "sample_links": parser.sample_links,
+        "rejected_link_samples": parser.rejected_link_samples,
+    }
 
-    def handle_data(self, data):
-        if self._skip_depth > 0:
-            return
-        txt = _normalize_text(data)
-        if not txt:
-            return
-        self.text_parts.append(txt)
-        current = self._tag_stack[-1] if self._tag_stack else ""
-        if current == "title":
-            self.title = (self.title + " " + txt).strip()
-        elif current == "h1":
-            self.h1_texts.append(txt)
-        elif current == "h2":
-            self.h2_texts.append(txt)
+
+def extract_candidates_with_diagnostics(html: str, source_url: str, source_type: str) -> tuple[list[dict], dict]:
+    parser = _CandidateParser(source_url, source_type)
+    parser.feed(html or "")
+    return parser.candidates, {
+        "anchors_seen": parser.anchors_seen,
+        "candidates_found": len(parser.candidates),
+        "sample_links": parser.sample_links,
+        "rejected_link_samples": parser.rejected_link_samples,
+    }
 
 
 def _normalize_text(text: str) -> str:
@@ -152,11 +164,8 @@ def _detect_pq_required(text: str) -> str:
 
 
 def extract_candidates(html: str, source_url: str, source_type: str) -> list[dict]:
-    parser = _CandidateParser(source_url)
-    parser.feed(html)
-    for c in parser.candidates:
-        c["source_type"] = source_type
-    return parser.candidates
+    candidates, _ = extract_candidates_with_diagnostics(html, source_url, source_type)
+    return candidates
 
 
 def parse_detail(html: str, candidate: dict, fetched_at: str) -> dict:
@@ -178,7 +187,8 @@ def parse_detail(html: str, candidate: dict, fetched_at: str) -> dict:
     has_heading = bool(_normalize_text(heading))
     has_body = len(raw_text) >= 40
     has_evidence = bool(detail_evidence)
-    parse_confidence = "medium" if has_heading and notice_url and has_body and has_evidence else "low"
+    is_pdf = (candidate.get("candidate_kind") or "") == "pdf" or notice_url.lower().endswith(".pdf")
+    parse_confidence = "medium" if (has_heading and notice_url and has_body and has_evidence and not is_pdf) else "low"
 
     project_id = generate_project_id("", title, "無償資金協力", notice_url)
     return {
@@ -207,3 +217,40 @@ def parse_detail(html: str, candidate: dict, fetched_at: str) -> dict:
         "last_checked": fetched_at,
         "change_flag": "new",
     }
+
+
+class _DetailTextParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.title = ""
+        self.h1_texts = []
+        self.h2_texts = []
+        self.text_parts = []
+        self._tag_stack = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        self._tag_stack.append(tag)
+        if tag in {"script", "style", "nav", "header", "footer"}:
+            self._skip_depth += 1
+
+    def handle_endtag(self, tag):
+        if self._tag_stack:
+            self._tag_stack.pop()
+        if tag in {"script", "style", "nav", "header", "footer"} and self._skip_depth > 0:
+            self._skip_depth -= 1
+
+    def handle_data(self, data):
+        if self._skip_depth > 0:
+            return
+        txt = _normalize_text(data)
+        if not txt:
+            return
+        self.text_parts.append(txt)
+        current = self._tag_stack[-1] if self._tag_stack else ""
+        if current == "title":
+            self.title = (self.title + " " + txt).strip()
+        elif current == "h1":
+            self.h1_texts.append(txt)
+        elif current == "h2":
+            self.h2_texts.append(txt)
