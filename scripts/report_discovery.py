@@ -70,6 +70,10 @@ def build_report(obj: dict) -> str:
     low_rate = (low_count / len(records)) if records else 0.0
     review_status = _review_status(records, errors, dups, missing, low_rate)
     error_rate = (len(errors) / len(records)) if records else (1.0 if errors else 0.0)
+    reject_warnings = [e for e in errors if (e.get("reason") or "") == "candidate_rejected"]
+    reject_reason_counts = Counter((e.get("reject_reason") or "unknown") for e in reject_warnings)
+    pdf_metadata_only_count = sum(1 for r in records if (r.get("status_detail") or "") == "pdf_metadata_only")
+    mojibake_detected = sum(1 for r in records if any(x in (r.get("project_name") or "") for x in ["ã", "ã", "ã", "Â", "ï¼"]))
 
     lines = [
         "# discovery_report",
@@ -88,6 +92,8 @@ def build_report(obj: dict) -> str:
         f"- project_name=要確認 件数: {missing['project_name_yokakunin']}",
         f"- parse_confidence全件low: {'はい' if all_low else 'いいえ'}",
         f"- parse_confidence low率: {low_rate:.0%}",
+        f"- pdf_metadata_only件数: {pdf_metadata_only_count}",
+        f"- mojibake_detected件数: {mojibake_detected}",
         f"- high-risk records総数: 0",
         "",
         "",
@@ -96,6 +102,7 @@ def build_report(obj: dict) -> str:
         f"- list_fetch_success: {meta.get('list_fetch_success', 0)}",
         f"- anchors_seen: {meta.get('anchors_seen', 0)}",
         f"- candidates_found: {meta.get('candidates_found', 0)}",
+        f"- candidate_rejected: {len(reject_warnings)}",
 
         "",
         "## parse_confidence別件数",
@@ -184,6 +191,13 @@ def build_report(obj: dict) -> str:
         )
 
     lines.extend(["", "## errors要約"])
+
+    if reject_reason_counts:
+        lines.append("")
+        lines.append("## candidate_rejected内訳")
+        for reason, cnt in sorted(reject_reason_counts.items()):
+            lines.append(f"- {reason}: {cnt}")
+
     if not errors:
         lines.append("- なし")
     else:

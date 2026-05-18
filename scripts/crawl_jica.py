@@ -11,12 +11,28 @@ import yaml
 try:
     from scripts.http_client import HTTPFetchError, fetch_text
     from scripts.parsers import parse_jica_grant_notice
-    from scripts.parsers.jica_discovery import PARSER_NAME, PARSER_VERSION, extract_candidates_with_diagnostics, parse_detail
+    from scripts.parsers.jica_discovery import (
+        PARSER_NAME,
+        PARSER_VERSION,
+        build_pdf_metadata_only_record,
+        extract_candidates_with_diagnostics,
+        parse_detail,
+        _is_pdf_candidate,
+        _should_reject_candidate,
+    )
     from scripts.source_loader import load_enabled_sources
 except ModuleNotFoundError:
     from http_client import HTTPFetchError, fetch_text
     from parsers import parse_jica_grant_notice
-    from parsers.jica_discovery import PARSER_NAME, PARSER_VERSION, extract_candidates_with_diagnostics, parse_detail
+    from parsers.jica_discovery import (
+        PARSER_NAME,
+        PARSER_VERSION,
+        build_pdf_metadata_only_record,
+        extract_candidates_with_diagnostics,
+        parse_detail,
+        _is_pdf_candidate,
+        _should_reject_candidate,
+    )
     from source_loader import load_enabled_sources
 
 
@@ -138,6 +154,23 @@ def discover_records(sources, scope, fetcher=fetch_text, sleeper=time.sleep):
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
             })
         for c in candidates[:max_detail]:
+            rejected, reject_reason = _should_reject_candidate(c)
+            if rejected:
+                errors.append({
+                    "level": "warning",
+                    "reason": "candidate_rejected",
+                    "reject_reason": reject_reason,
+                    "candidate_url": c.get("candidate_url", ""),
+                    "candidate_title": c.get("candidate_title", ""),
+                    "source_url": c.get("source_url", source.get("url", "")),
+                    "fetched_at": datetime.now(timezone.utc).isoformat(),
+                })
+                continue
+
+            if _is_pdf_candidate(c):
+                records.append(build_pdf_metadata_only_record(c, now))
+                continue
+
             try:
                 detail_html = fetcher(c["candidate_url"])
             except HTTPFetchError as err:

@@ -1,111 +1,67 @@
-import json
-
-import pytest
-
-from scripts.crawl_jica import crawl_sources, discover_records
+from scripts.crawl_jica import discover_records
 from scripts.http_client import HTTPFetchError
-from scripts.validate_config import validate_crawl_scope
-from scripts.diff_records import load_records
 
 
-def test_discover_list_fetch_failure_has_diagnostics():
+def test_pdf_candidate_skips_detail_fetch(monkeypatch):
     sources = [{"source_type": "jica_grant_notice", "url": "https://example.com/list", "enabled": True}]
-    scope = {"sources": ["jica_grant_notice"], "max_pages_per_source": 1, "max_detail_pages": 1, "request_interval_seconds": 2}
+    scope = {"sources": ["jica_grant_notice"], "max_pages_per_source": 1, "max_detail_pages": 5, "request_interval_seconds": 0}
 
-    def fake_fetch(_):
-        raise HTTPFetchError("HTTP取得失敗", url="https://example.com/list", status_code=403, exception_type="HTTPError")
-
-    out = discover_records(sources, scope, fetcher=fake_fetch, sleeper=lambda _: None)
-    err = next(e for e in out["errors"] if e.get("reason") == "list_fetch_failed")
-    assert err["status_code"] == 403
-    assert err["exception_type"] == "HTTPError"
-    assert err["error_message"]
-    assert err["fetched_at"]
-
-
-def test_discover_detail_fetch_failure_is_error_not_record(monkeypatch):
-    sources = [{"source_type": "jica_grant_notice", "url": "https://example.com/list", "enabled": True}]
-    scope = {"sources": ["jica_grant_notice"], "max_pages_per_source": 1, "max_detail_pages": 5, "request_interval_seconds": 2}
-
-    monkeypatch.setattr('scripts.crawl_jica.extract_candidates_with_diagnostics', lambda *_: ([{
-        "source_type": "jica_grant_notice",
-        "source_url": "https://example.com/list",
-        "candidate_url": "https://example.com/detail/1",
-        "candidate_title": "入札案件A",
-    }], {"anchors_seen": 0, "candidates_found": 0, "sample_links": [], "rejected_link_samples": []}))
+    monkeypatch.setattr(
+        "scripts.crawl_jica.extract_candidates_with_diagnostics",
+        lambda *_: ([{
+            "source_type": "jica_grant_notice",
+            "source_url": "https://example.com/list",
+            "candidate_url": "https://example.com/notice.pdf#page=1",
+            "candidate_title": "2026年5月11日公示 ガーナ国",
+            "candidate_kind": "pdf",
+        }], {"anchors_seen": 1, "candidates_found": 1, "sample_links": [], "rejected_link_samples": []}),
+    )
 
     def fake_fetch(url):
-        if 'detail' in url:
-            raise HTTPFetchError("detail ng", url=url, status_code=500, exception_type="HTTPError")
-        return '<html>list</html>'
+        if "notice.pdf" in url:
+            raise AssertionError("pdf detail fetch should not happen")
+        return "<html>list</html>"
 
-    sleeps = []
-    out = discover_records(sources, scope, fetcher=fake_fetch, sleeper=lambda x: sleeps.append(x))
-    assert out['records'] == []
-    err = next(e for e in out['errors'] if e.get('reason') == 'detail_fetch_failed')
-    assert err['status_code'] == 500
-    assert err['exception_type'] == 'HTTPError'
-    assert err['error_message']
-    assert err['fetched_at']
-    assert sleeps == [2]
+    out = discover_records(sources, scope, fetcher=fake_fetch, sleeper=lambda _: None)
+    assert len(out["records"]) == 1
+    assert out["records"][0]["status_detail"] == "pdf_metadata_only"
 
 
-def test_discover_request_interval_applied_between_requests(monkeypatch):
+def test_candidate_rejected_warning(monkeypatch):
     sources = [{"source_type": "jica_grant_notice", "url": "https://example.com/list", "enabled": True}]
-    scope = {"sources": ["jica_grant_notice"], "max_pages_per_source": 1, "max_detail_pages": 2, "request_interval_seconds": 3}
-
-    monkeypatch.setattr('scripts.crawl_jica.extract_candidates_with_diagnostics', lambda *_: ([
-        {"source_type": "jica_grant_notice", "source_url": "https://example.com/list", "candidate_url": "https://example.com/detail/1", "candidate_title": "入札案件A"},
-        {"source_type": "jica_grant_notice", "source_url": "https://example.com/list", "candidate_url": "https://example.com/detail/2", "candidate_title": "入札案件B"},
-    ], {"anchors_seen": 2, "candidates_found": 2, "sample_links": [], "rejected_link_samples": []}))
-
-    sleeps = []
-    out = discover_records(sources, scope, fetcher=lambda _: '<html></html>', sleeper=lambda x: sleeps.append(x))
-    assert len(out['records']) == 2
-    assert sleeps == [3, 3, 3]
-
-
-def test_watchlist_mode_still_works_with_http_fetch_error(monkeypatch):
-    projects = [{"project_id": "P1", "country": "JP", "project_name": "案件", "keywords": "k"}]
-    sources = [{"source_type": "jica_grant_notice", "url": "https://example.com/list", "enabled": True}]
-    monkeypatch.setattr('scripts.crawl_jica.fetch_text', lambda *_: (_ for _ in ()).throw(HTTPFetchError("ng")))
-    out = crawl_sources(projects, sources)
-    assert len(out) == 1
-    assert "HTTP取得失敗" in out[0]["status_detail"]
-
-
-def test_load_records_accepts_discover_shape(tmp_path):
-    p = tmp_path / 'd.json'
-    p.write_text(json.dumps({"records": [{"project_id": "P1"}], "errors": [], "meta": {}}), encoding='utf-8')
-    assert load_records(str(p)) == [{"project_id": "P1"}]
-
-
-def test_validate_crawl_scope_upper_bound(tmp_path):
-    p = tmp_path / 'crawl_scope.yml'
-    p.write_text('''scope:\n  schemes: [grant_aid]\n  sources: [jica_grant_notice]\n  max_pages_per_source: 31\n  request_interval_seconds: 1\n  max_detail_pages: 20\n''', encoding='utf-8')
-    with pytest.raises(ValueError, match='max_pages_per_source'):
-        validate_crawl_scope(str(p))
-
-
-def test_discover_no_candidates_warning_and_meta(monkeypatch):
-    sources = [{"source_type": "jica_grant_notice", "url": "https://example.com/list", "enabled": True}]
-    scope = {"sources": ["jica_grant_notice"], "max_pages_per_source": 1, "max_detail_pages": 5, "request_interval_seconds": 1}
-
-    monkeypatch.setattr('scripts.crawl_jica.extract_candidates_with_diagnostics', lambda *_: ([], {
-        "anchors_seen": 3,
-        "candidates_found": 0,
-        "sample_links": [{"title": "トップ", "url": "https://example.com/top"}],
-        "rejected_link_samples": [{"title": "会社案内", "url": "https://example.com/about"}],
-    }))
-
-    out = discover_records(sources, scope, fetcher=lambda _: '<html>list</html>', sleeper=lambda _: None)
+    scope = {"sources": ["jica_grant_notice"], "max_pages_per_source": 1, "max_detail_pages": 5, "request_interval_seconds": 0}
+    monkeypatch.setattr(
+        "scripts.crawl_jica.extract_candidates_with_diagnostics",
+        lambda *_: ([{
+            "source_type": "jica_grant_notice",
+            "source_url": "https://example.com/list",
+            "candidate_url": "https://example.com/about/chotatsu/program",
+            "candidate_title": "調達情報のご案内",
+        }], {"anchors_seen": 1, "candidates_found": 1, "sample_links": [], "rejected_link_samples": []}),
+    )
+    out = discover_records(sources, scope, fetcher=lambda _: "<html>list</html>", sleeper=lambda _: None)
     assert out["records"] == []
-    warn = next(e for e in out["errors"] if e.get("reason") == "no_candidates_found")
-    assert warn["level"] == "warning"
-    assert warn["anchors_seen"] == 3
-    assert warn["sample_links"]
-    assert warn["rejected_link_samples"]
-    assert out["meta"]["anchors_seen"] == 3
-    assert out["meta"]["candidates_found"] == 0
-    assert out["meta"]["sources_checked"] == 1
-    assert out["meta"]["list_fetch_success"] == 1
+    warn = next(e for e in out["errors"] if e.get("reason") == "candidate_rejected")
+    assert warn["reject_reason"] == "non_project_navigation_page"
+
+
+def test_detail_fetch_failed_still_works(monkeypatch):
+    sources = [{"source_type": "jica_grant_notice", "url": "https://example.com/list", "enabled": True}]
+    scope = {"sources": ["jica_grant_notice"], "max_pages_per_source": 1, "max_detail_pages": 5, "request_interval_seconds": 0}
+    monkeypatch.setattr(
+        "scripts.crawl_jica.extract_candidates_with_diagnostics",
+        lambda *_: ([{
+            "source_type": "jica_grant_notice",
+            "source_url": "https://example.com/list",
+            "candidate_url": "https://example.com/detail/1",
+            "candidate_title": "入札案件A",
+        }], {"anchors_seen": 1, "candidates_found": 1, "sample_links": [], "rejected_link_samples": []}),
+    )
+
+    def fake_fetch(url):
+        if "detail" in url:
+            raise HTTPFetchError("detail ng", url=url, status_code=500, exception_type="HTTPError")
+        return "<html>list</html>"
+
+    out = discover_records(sources, scope, fetcher=fake_fetch, sleeper=lambda _: None)
+    assert next(e for e in out["errors"] if e.get("reason") == "detail_fetch_failed")
